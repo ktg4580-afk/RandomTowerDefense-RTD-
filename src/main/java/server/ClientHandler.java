@@ -16,6 +16,7 @@ final class ClientHandler implements Runnable {
     private volatile String playerName = "";
     private volatile int id;
     private volatile boolean ready;
+    private volatile GameRoom room;
 
     ClientHandler(GameServer server, Socket socket) {
         this.server = server;
@@ -37,8 +38,17 @@ final class ClientHandler implements Runnable {
 
             String line;
             while ((line = input.readLine()) != null) {
-                if (line.equals(Protocol.READY)) server.ready(this);
-                else if (line.startsWith(Protocol.CHAT + " ")) server.chat(this, line.substring((Protocol.CHAT + " ").length()));
+                if (line.equals(Protocol.ROOM_LIST)) server.listRooms(this);
+                else if (line.startsWith(Protocol.ROOM_CREATE + " ")) server.createRoom(this, line.substring(Protocol.ROOM_CREATE.length() + 1).strip());
+                else if (line.startsWith(Protocol.ROOM_JOIN + " ")) server.joinRoom(this, line.substring(Protocol.ROOM_JOIN.length() + 1).strip());
+                else if (line.equals(Protocol.ROOM_LEAVE)) server.leaveRoom(this);
+                else if (line.equals(Protocol.READY)) server.setReady(this, true);
+                else if (line.equals(Protocol.UNREADY)) server.setReady(this, false);
+                else if (line.equals(Protocol.START_REQUEST)) server.requestStart(this);
+                else if (line.equals(Protocol.SUMMON)) server.summon(this);
+                else if (line.startsWith(Protocol.MERGE + " ")) server.merge(this, line.substring(Protocol.MERGE.length() + 1).strip());
+                else if (line.startsWith(Protocol.UPGRADE + " ")) server.upgrade(this, line.substring(Protocol.UPGRADE.length() + 1).strip());
+                else if (line.startsWith(Protocol.CHAT + " ")) server.chat(this, line.substring(Protocol.CHAT.length() + 1));
                 else send(Protocol.ERROR + " UNKNOWN_COMMAND");
             }
         } catch (IOException e) {
@@ -54,5 +64,7 @@ final class ClientHandler implements Runnable {
     boolean isReady() { return ready; }
     void setReady(boolean ready) { this.ready = ready; }
     synchronized void send(String line) { if (output != null) output.println(line); }
+    GameRoom getRoom() { return room; }
+    void setRoom(GameRoom room) { this.room = room; }
     void close() { try { socket.close(); } catch (IOException ignored) { } }
 }
