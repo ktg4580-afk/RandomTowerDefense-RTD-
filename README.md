@@ -1,69 +1,41 @@
-# 태산 - Random Tower Defense
+# RandomTowerDefense — 태산 팀
 
-Java Socket 기반 2인용 실시간 타워 디펜스 게임 프로젝트 (초기 개발 환경).
+Java TCP Socket 기반 실시간 1v1 랜덤 타워 디펜스. **서버 기능별 개발 단계**이며 전체 게임 완성본은 아닙니다.
 
-> 현재 들어 있는 것은 **2인 접속 / 준비 / 시작 알림 / 간단한 채팅**을 테스트하는 기반 코드입니다. 주사위, 웨이브, 엘리트 몬스터 및 승패 로직은 **아직 구현되지 않았습니다**.
+## 현재 구현된 서버 기능
+- 사용자 등록, 다중 방 목록·생성·입장·퇴장, 방장 위임, 준비/취소 및 방장 시작 요청
+- 방별 채팅 중계 및 퇴장 시 진행 중인 게임 중단
+- 주사위 서버 상태: 15칸 필드, 3종 주사위 랜덤 소환, 같은 종류·등급 합성, 종류별 강화, SP 차감
+- 서버 검증 후 방 참가자 둘에게 상태 브로드캐스트
 
-## 요구 환경
-- **최신 JDK 설치 및 PATH 등록** (팀원끼리 정확한 버전을 맞출 것; `java -version` / `javac -version` 확인)
-- Git
-- Windows PowerShell 또는 Linux/macOS 터미널
-- 외부 라이브러리 없음 (Java 표준 라이브러리만 사용)
-- 기본 서버 포트: `5000` (로컬 접속 `127.0.0.1`)
+**미구현:** 몬스터·웨이브·전투, SP 획득, 엘리트 소환, 실제 게임 승패, 클라이언트 게임 UI와의 연동. 기존 `GameClient.java`는 *옛 프로토콜 기반 임시 테스트 UI*이므로 현재 방/주사위 기능용 화면이 아닙니다.
 
-## Windows 실행
-각 명령은 **프로젝트 최상위 폴더**에서 실행합니다.
+## 개발 환경
+- Java 25 사용 계획(팀 합의). 이 배포본의 기본 기능은 OpenJDK 21에서 컴파일·테스트 검증됨.
+- TCP, UTF-8, 기본 포트 5000. 외부 Java 라이브러리 불필요.
+- Python 3은 자동화된 소켓 통합 테스트를 실행할 때만 필요.
 
-터미널 1 (서버):
+## 실행 (Windows PowerShell, 프로젝트 루트)
+
+서버:
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\run-server.ps1
 ```
-터미널 2, 3 (클라이언트 2개):
+
+임시 Swing 클라이언트(방/주사위 UI **미지원**):
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\run-client.ps1
 ```
-처음 실행할 때마다 자동 컴파일합니다. IDE에서 `server.GameServer`와 `client.GameClient`를 각각 실행해도 됩니다.
 
-## Linux/macOS 실행
-```bash
-bash scripts/run-server.sh
-# 다른 터미널 두 개에서
-bash scripts/run-client.sh
+자동 테스트(자체 서버를 포트 39871, 39872로 실행함):
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\test-server.ps1
 ```
 
-## 첫 통합 테스트
-1. 서버를 실행하고 2개의 클라이언트를 열어 서로 다른 이름으로 접속합니다.
-2. 두 클라이언트에서 각각 **준비 완료**를 누르면 서버가 `/START`를 전송합니다.
-3. 한 클라이언트에서 `HELLO`를 입력 후 전송하면 다른 클라이언트에도 채팅이 보입니다.
-4. 세 번째 클라이언트 또는 중복 이름 접속은 거절됩니다.
-5. 한 클라이언트를 종료하면 다른 클라이언트에 접속 종료 안내가 표시됩니다.
+Linux/macOS: `bash scripts/run-server.sh` 또는 `bash scripts/test-server.sh`.
 
-## 구조
-```text
-src/main/java/
-  common/Protocol.java            # 공통 명령 상수
-  server/GameServer.java          # 2인용 TCP 서버
-  server/ClientHandler.java       # 각 클라이언트 수신 스레드
-  client/GameClient.java          # Swing 기반 접속/준비/채팅 테스트 화면
-scripts/                        # 컴파일 및 실행
- docs/                           # 프로토콜 · 협업 · 게임 규칙 초안
-```
-
-## Git 협업
-- `main`: 검증된 코드
-- `feature/server`, `feature/client-ui`, `feature/game-logic`: 작업 예시 (필요할 때 브랜치 생성)
-- GitHub 원격 저장소는 연결되어 있지 않습니다. README 아래 지침을 따라 **직접 생성 후 연결**하세요.
-
-```bash
-git remote add origin https://github.com/OWNER/REPO.git
-git push -u origin main
-```
-위 주소는 예시입니다. GitHub에서 생성한 실제 빈 저장소 주소로 바꾸세요.
-
-## 작업 전 결정 사항
-- 팀 공통 JDK의 정확한 버전
-- 주사위 및 엘리트 몬스터의 게임 규칙
-- 서버에서 사용하는 게임 상태 구조와 전송 주기
-- 주차별 담당 역할과 PR 승인 규칙
-
-게임 로직 확장은 `docs/PROTOCOL.md` 및 `docs/GAME_RULES.md`를 먼저 수정한 다음 진행하세요.
+## 팀 협업
+- 서버 담당: 김태규. UI/클라이언트 담당: 이산. 게임 규칙, 프로토콜 및 통합 테스트는 공동.
+- 기능별 브랜치에서 커밋 후 GitHub에 푸시하고 PR로 검토하여 `main`에 병합.
+- 통신 규약 세부사항: [docs/PROTOCOL.md](docs/PROTOCOL.md)
+- 서버 구현·테스트 로그 요약: [docs/DEVELOPMENT_LOG.md](docs/DEVELOPMENT_LOG.md)

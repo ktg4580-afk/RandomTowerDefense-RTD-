@@ -5,13 +5,17 @@ import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
-/** 최초 버전: 2명 입장 / 준비 / 채팅만 서버에서 관리합니다. */
+/** 방 관리 서버: 등록 → 방 생성/입장 → 준비 → 방장 시작 요청. */
 public final class GameServer {
     private final Object lock = new Object();
     private final List<ClientHandler> players = new ArrayList<>();
-    private boolean started;
+    private final Map<Integer, GameRoom> rooms = new LinkedHashMap<>();
+    private int nextPlayerId = 1;
+    private int nextRoomId = 1;
 
     public static void main(String[] args) throws IOException {
         int port = args.length > 0 ? Integer.parseInt(args[0]) : 5000;
@@ -28,13 +32,8 @@ public final class GameServer {
         }
     }
 
-    /** 호출하는 핸들러는 이 메서드가 성공해야만 참가자가 됩니다. */
     boolean join(ClientHandler client, String name) {
         synchronized (lock) {
-            if (started || players.size() >= 2) {
-                client.send(Protocol.JOIN_FAIL + " ROOM_FULL");
-                return false;
-            }
             if (name.isBlank() || name.length() > 20 || !name.matches("[\\p{L}\\p{N}_-]+")) {
                 client.send(Protocol.JOIN_FAIL + " INVALID_NAME");
                 return false;
@@ -45,60 +44,208 @@ public final class GameServer {
                     return false;
                 }
             }
-            int id = players.isEmpty() ? 1 : (players.get(0).getId() == 1 ? 2 : 1);
+            int id = nextPlayerId++;
             client.assign(id, name);
             players.add(client);
             client.send(Protocol.JOIN_OK + " " + id);
-            broadcastLocked(Protocol.WAIT + " " + players.size() + "/2");
-            System.out.println("[SERVER] Joined: " + name + " (" + id + ")");
+            System.out.println("[SERVER] Registered: " + name + " (" + id + ")");
             return true;
         }
     }
 
-    void ready(ClientHandler client) {
+    void listRooms(ClientHandler client) {
         synchronized (lock) {
-            if (!players.contains(client) || started) return;
-            client.setReady(true);
-            if (players.size() == 2 && players.stream().allMatch(ClientHandler::isReady)) {
-                started = true;
-                broadcastLocked(Protocol.START);
-                System.out.println("[SERVER] Both players ready, game started (network demo)");
-            }
+            if (!registered(client)) return;
+            // 제목에는 공백/콜론을 허용하지 않아 한 줄 문자열로 안전하게 파싱됩니다.
+            StringBuilder list = new StringBuilder(Protocol.ROOM_LIST_RESULT);
+            for (GameRoom room : rooms.values()) list.append(' ').append(room.summary());
+            client.send(list.toString());
         }
+    }
+
+    void createRoom(ClientHandler client, String title) {
+        synchronized (lock) {
+            if (!registered(client)) return;
+            if (client.getRoom() != null) { client.send(Protocol.ERROR + " ALREADY_IN_ROOM"); return; }
+            if (!title.matches("[\\p{L}\\p{N}_-]{1,20}")) {
+                client.send(Protocol.ERROR + " INVALID_ROOM_NAME"); return;
+            }
+            GameRoom room = new GameRoom(nextRoomId++, title, client);
+            rooms.put(room.id, room);
+            client.setRoom(room);
+            client.setReady(false);
+            client.send(Protocol.ROOM_CREATED + " " + room.id);
+            roomState(room);
+        }
+    }
+
+    void joinRoom(ClientHandler client, String rawId) {
+        synchronized (lock) {
+            if (!registered(client)) return;
+            if (client.getRoom() != null) { client.send(Protocol.ERROR + " ALREADY_IN_ROOM"); return; }
+            int id;
+            try { id = Integer.parseInt(rawId); }
+            catch (NumberFormatException e) { client.send(Protocol.ERROR + " INVALID_ROOM_ID"); return; }
+            GameRoom room = rooms.get(id);
+            if (room == null) { client.send(Protocol.ERROR + " ROOM_NOT_FOUND"); return; }
+            if (room.started) { client.send(Protocol.ERROR + " GAME_ALREADY_STARTED"); return; }
+            if (room.members.size() >= 2) { client.send(Protocol.ERROR + " ROOM_FULL"); return; }
+            room.members.add(client);
+            client.setRoom(room);
+            client.setReady(false);
+            client.send(Protocol.ROOM_JOINED + " " + room.id);
+            roomState(room);
+        }
+    }
+
+    void leaveRoom(ClientHandler client) {
+        synchronized (lock) {
+            if (!registered(client)) return;
+            if (client.getRoom() == null) { client.send(Protocol.ERROR + " NOT_IN_ROOM"); return; }
+            removeFromRoom(client, true);
+        }
+    }
+
+    void setReady(ClientHandler client, boolean ready) {
+        synchronized (lock) {
+            if (!registered(client)) return;
+            GameRoom room = client.getRoom();
+            if (room == null) { client.send(Protocol.ERROR + " NOT_IN_ROOM"); return; }
+            if (room.started) { client.send(Protocol.ERROR + " GAME_ALREADY_STARTED"); return; }
+            if (client.isReady() == ready) { client.send(Protocol.ERROR + (ready ? " ALREADY_READY" : " ALREADY_NOT_READY")); return; }
+            client.setReady(ready);
+            roomState(room);
+        }
+    }
+
+    void requestStart(ClientHandler client) {
+        synchronized (lock) {
+            if (!registered(client)) return;
+            GameRoom room = client.getRoom();
+            if (room == null) { client.send(Protocol.ERROR + " NOT_IN_ROOM"); return; }
+            if (room.started) { client.send(Protocol.ERROR + " GAME_ALREADY_STARTED"); return; }
+            if (room.host != client) { client.send(Protocol.ERROR + " NOT_HOST"); return; }
+            if (room.members.size() != 2 || room.members.stream().anyMatch(p -> !p.isReady())) {
+                client.send(Protocol.ERROR + " PLAYERS_NOT_READY"); return;
+            }
+            room.game = new DiceGame(room.members.get(0).getId(), room.members.get(1).getId());
+            room.started = true;
+            broadcast(room, Protocol.START + " " + room.id);
+            broadcastDiceState(room);
+            roomState(room);
+            System.out.println("[SERVER] Room " + room.id + " started (gameplay pending)");
+        }
+    }
+
+    /** 클라이언트의 소환/합성/강화는 서버에서 검증하고, 방 안에만 결과를 전송합니다. */
+    void summon(ClientHandler client) {
+        synchronized (lock) {
+            GameRoom room = playingRoom(client);
+            if (room == null) return;
+            sendAction(room, client, room.game.summon(client.getId()));
+        }
+    }
+
+    void merge(ClientHandler client, String input) {
+        synchronized (lock) {
+            GameRoom room = playingRoom(client);
+            if (room == null) return;
+            String[] tokens = input.split("\\s+");
+            if (tokens.length != 2) { client.send(Protocol.ERROR + " INVALID_ARGUMENTS"); return; }
+            int from, to;
+            try {
+                from = Integer.parseInt(tokens[0]);
+                to = Integer.parseInt(tokens[1]);
+            } catch (NumberFormatException e) {
+                client.send(Protocol.ERROR + " INVALID_ARGUMENTS"); return;
+            }
+            sendAction(room, client, room.game.merge(client.getId(), from, to));
+        }
+    }
+
+    void upgrade(ClientHandler client, String type) {
+        synchronized (lock) {
+            GameRoom room = playingRoom(client);
+            if (room == null) return;
+            sendAction(room, client, room.game.upgrade(client.getId(), type));
+        }
+    }
+
+    private GameRoom playingRoom(ClientHandler client) {
+        if (!registered(client)) return null;
+        GameRoom room = client.getRoom();
+        if (room == null) { client.send(Protocol.ERROR + " NOT_IN_ROOM"); return null; }
+        if (!room.started || room.game == null) {
+            client.send(Protocol.ERROR + " GAME_NOT_STARTED"); return null;
+        }
+        return room;
+    }
+
+    private void sendAction(GameRoom room, ClientHandler client, DiceGame.ActionResult result) {
+        if (!result.success()) {
+            client.send(Protocol.ERROR + " " + result.error);
+            return;
+        }
+        broadcastDiceState(room);
+    }
+
+    private void broadcastDiceState(GameRoom room) {
+        if (room.game == null) return;
+        for (DiceGame.PlayerField field : room.game.fields()) broadcast(room, field.encode());
     }
 
     void chat(ClientHandler client, String message) {
         synchronized (lock) {
-            if (!players.contains(client)) return;
+            if (!registered(client)) return;
+            GameRoom room = client.getRoom();
+            if (room == null) { client.send(Protocol.ERROR + " NOT_IN_ROOM"); return; }
             String trimmed = message.strip();
             if (trimmed.isEmpty()) return;
-            if (trimmed.length() > 120) {
-                client.send(Protocol.ERROR + " CHAT_TOO_LONG");
-                return;
-            }
-            broadcastLocked(Protocol.CHAT + " " + client.getId() + " " + trimmed);
+            if (trimmed.length() > 120) { client.send(Protocol.ERROR + " CHAT_TOO_LONG"); return; }
+            broadcast(room, Protocol.CHAT + " " + client.getId() + " " + trimmed);
         }
     }
 
     void leave(ClientHandler client) {
         synchronized (lock) {
             if (players.remove(client)) {
-                broadcastLocked(Protocol.PLAYER_LEFT + " " + client.getId());
-                // 최초 단계에서는 대전 재설정(리매치) 미구현. 남은 참가자는 재접속 필요.
-                if (started) {
-                    for (ClientHandler player : List.copyOf(players)) {
-                        player.send(Protocol.ERROR + " GAME_INTERRUPTED_RECONNECT");
-                        player.close();
-                    }
-                    players.clear();
-                    started = false;
-                }
-                System.out.println("[SERVER] Left: " + client.getPlayerName());
+                removeFromRoom(client, false);
+                System.out.println("[SERVER] Disconnected: " + client.getPlayerName());
             }
         }
     }
 
-    private void broadcastLocked(String line) {
-        for (ClientHandler player : players) player.send(line);
+    private boolean registered(ClientHandler client) {
+        if (players.contains(client)) return true;
+        client.send(Protocol.ERROR + " NOT_JOINED");
+        return false;
+    }
+
+    private void removeFromRoom(ClientHandler client, boolean acknowledge) {
+        GameRoom room = client.getRoom();
+        if (room == null) return;
+        room.members.remove(client);
+        client.setRoom(null);
+        client.setReady(false);
+        if (acknowledge) client.send(Protocol.ROOM_LEFT + " " + room.id);
+        broadcast(room, Protocol.PLAYER_LEFT + " " + client.getId());
+        if (room.members.isEmpty()) {
+            rooms.remove(room.id);
+            return;
+        }
+        if (room.host == client) room.host = room.members.get(0);
+        if (room.started) {
+            // 상대가 퇴장하면 진행 중인 게임을 중단하고 남은 플레이어를 대기 상태로 되돌립니다.
+            room.started = false;
+            room.game = null;
+            for (ClientHandler member : room.members) member.setReady(false);
+            broadcast(room, Protocol.ERROR + " GAME_INTERRUPTED");
+        }
+        roomState(room);
+    }
+
+    private void roomState(GameRoom room) { broadcast(room, Protocol.ROOM_STATE + " " + room.state()); }
+    private void broadcast(GameRoom room, String line) {
+        for (ClientHandler member : List.copyOf(room.members)) member.send(line);
     }
 }
