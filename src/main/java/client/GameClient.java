@@ -20,7 +20,6 @@ import javax.swing.JTextArea;
 import javax.swing.JTextField;
 import javax.swing.SwingUtilities;
 
-/** 초기 네트워크 테스트 UI. 게임 필드 및 게임 로직은 아직 없습니다. */
 public final class GameClient extends JFrame {
     private final JTextField host = new JTextField("127.0.0.1", 11);
     private final JTextField port = new JTextField("5000", 5);
@@ -111,7 +110,7 @@ public final class GameClient extends JFrame {
             readyButton.setEnabled(false);
         } else if (line.startsWith(Protocol.JOIN_FAIL + " ")) {
             status.setText("참가 거절 - " + line.substring(11));
-            // 거절된 연결은 서버 측에서 닫힙니다.
+
         } else if (line.startsWith(Protocol.PLAYER_LEFT + " ")) {
             status.setText("상대 플레이어 연결 종료");
         }

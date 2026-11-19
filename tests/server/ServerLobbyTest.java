@@ -11,7 +11,6 @@ import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.TimeUnit;
 
-/** 서버 프로세스와 실제 TCP 연결을 사용한 2인 대기실 통합 테스트. */
 public final class ServerLobbyTest {
     private ServerLobbyTest() { }
 

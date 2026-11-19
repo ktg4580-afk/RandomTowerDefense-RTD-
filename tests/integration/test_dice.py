@@ -89,7 +89,6 @@ try:
         first = next_state(c, 1)
         next_state(c, 2)
         assert first[2:4] == ['25', '20'] and sum(1 for d in first[7:] if d != '-') == 2
-    # Merge requires same dice type; random summon may yield different types.
     active_cells = [i for i, val in enumerate(first[7:]) if val != '-']
     assert len(active_cells) == 2
     a.send(f'/MERGE {active_cells[0]} {active_cells[1]}')
