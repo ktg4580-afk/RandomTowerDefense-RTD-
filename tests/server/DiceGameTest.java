@@ -2,7 +2,6 @@ package server;
 
 import java.util.Random;
 
-/** 외부 라이브러리 없는 서버 게임 규칙 단위 테스트. */
 public final class DiceGameTest {
     private static void require(boolean condition, String message) {
         if (!condition) throw new AssertionError(message);

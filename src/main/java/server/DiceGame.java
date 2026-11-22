@@ -4,7 +4,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 
-/** 서버만 소유하는 게임 데이터. GameServer.lock 내에서만 호출한다. */
 final class DiceGame {
     static final int FIELD_SIZE = 15;
     static final int START_SP = 100;
@@ -71,6 +70,7 @@ final class DiceGame {
         return null;
     }
 
+    // 주사위 소환
     ActionResult summon(int id) {
         PlayerField field = player(id);
         if (field == null) return ActionResult.error("PLAYER_NOT_IN_GAME");
@@ -92,6 +92,7 @@ final class DiceGame {
         return ActionResult.ok();
     }
 
+    // 같은 종류와 레벨만 합성
     ActionResult merge(int id, int from, int to) {
         PlayerField field = player(id);
         if (field == null) return ActionResult.error("PLAYER_NOT_IN_GAME");
@@ -108,6 +109,7 @@ final class DiceGame {
         return ActionResult.ok();
     }
 
+    // 주사위 종류별 강화
     ActionResult upgrade(int id, String type) {
         PlayerField field = player(id);
         if (field == null) return ActionResult.error("PLAYER_NOT_IN_GAME");
