@@ -15,25 +15,6 @@ Java TCP Socket 기반 실시간 1v1 랜덤 타워 디펜스. **서버 기능별
 - TCP, UTF-8, 기본 포트 5000. 외부 Java 라이브러리 불필요
 - Python 3은 자동화된 소켓 통합 테스트를 실행할 때만 필요
 
-## 실행 (Windows PowerShell, 프로젝트 루트)
-
-서버:
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\run-server.ps1
-```
-
-임시 Swing 클라이언트(방/주사위 UI **미지원**):
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\run-client.ps1
-```
-
-자동 테스트(자체 서버를 포트 39871, 39872로 실행함):
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\test-server.ps1
-```
-
-Linux/macOS: `bash scripts/run-server.sh` 또는 `bash scripts/test-server.sh`
-
 ## 팀 협업
 - 서버 담당: 김태규. UI/클라이언트 담당: 이산. 게임 규칙, 프로토콜 및 통합 테스트는 공동
 - 기능별 브랜치에서 커밋 후 GitHub에 푸시하고 PR로 검토하여 `main`에 병합
