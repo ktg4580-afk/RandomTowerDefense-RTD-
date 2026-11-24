@@ -43,11 +43,11 @@ public class GameFrame extends JFrame {
         bulletLayer.setBounds(0, 0, 500, 880);
 
         // 위쪽 보드: 상대방
-        topBoard = new Board("Opponent");
+        topBoard = new Board(false);
         topBoard.setBulletLayer(bulletLayer);
 
         // 아래쪽 보드: 나
-        bottomBoard = new Board("Me");
+        bottomBoard = new Board(true);
         bottomBoard.setBulletLayer(bulletLayer);
 
         // 내 보드 + 소환 버튼 패널
