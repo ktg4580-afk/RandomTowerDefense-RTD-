@@ -28,7 +28,7 @@ final class ClientHandler implements Runnable {
              BufferedReader input = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
              PrintWriter out = new PrintWriter(new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8), true)) {
             output = out;
-            // 참가 요청 전에 임의 명령을 실행하지 못하도록 첫 메시지를 확인합니다.
+
             String first = input.readLine();
             if (first == null || !first.startsWith(Protocol.JOIN + " ")) {
                 send(Protocol.JOIN_FAIL + " EXPECT_JOIN");
@@ -46,6 +46,7 @@ final class ClientHandler implements Runnable {
                 else if (line.equals(Protocol.UNREADY)) server.setReady(this, false);
                 else if (line.equals(Protocol.START_REQUEST)) server.requestStart(this);
                 else if (line.equals(Protocol.SUMMON)) server.summon(this);
+                else if (line.equals(Protocol.ELITE_SUMMON)) server.eliteSummon(this);
                 else if (line.startsWith(Protocol.MERGE + " ")) server.merge(this, line.substring(Protocol.MERGE.length() + 1).strip());
                 else if (line.startsWith(Protocol.UPGRADE + " ")) server.upgrade(this, line.substring(Protocol.UPGRADE.length() + 1).strip());
                 else if (line.startsWith(Protocol.CHAT + " ")) server.chat(this, line.substring(Protocol.CHAT.length() + 1));

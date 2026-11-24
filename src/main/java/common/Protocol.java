@@ -1,6 +1,9 @@
 package common;
 
+<<<<<<< HEAD
 /** 한 줄에 명령 1개, UTF-8, 공백으로 명령/인자를 구분합니다. */
+=======
+>>>>>>> 25d878f849309b64acf73fab33c1a5a9f27305b1
 public final class Protocol {
     private Protocol() { }
     public static final String JOIN = "/JOIN";
@@ -28,4 +31,10 @@ public final class Protocol {
     public static final String MERGE = "/MERGE";
     public static final String UPGRADE = "/UPGRADE";
     public static final String DICE_STATE = "/DICE_STATE";
+<<<<<<< HEAD
+=======
+    public static final String ELITE_SUMMON = "/ELITE_SUMMON";
+    public static final String MONSTER_STATE = "/MONSTER_STATE";
+    public static final String GAME_OVER = "/GAME_OVER";
+>>>>>>> 25d878f849309b64acf73fab33c1a5a9f27305b1
 }

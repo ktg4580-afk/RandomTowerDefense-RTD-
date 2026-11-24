@@ -8,18 +8,21 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
-/** 방 관리 서버: 등록 → 방 생성/입장 → 준비 → 방장 시작 요청. */
 public final class GameServer {
     private final Object lock = new Object();
     private final List<ClientHandler> players = new ArrayList<>();
     private final Map<Integer, GameRoom> rooms = new LinkedHashMap<>();
     private int nextPlayerId = 1;
     private int nextRoomId = 1;
- // GameServer 필드 추가
-    private final java.util.concurrent.ScheduledExecutorService spScheduler =
-            java.util.concurrent.Executors.newSingleThreadScheduledExecutor();
-    private final Map<Integer, java.util.concurrent.ScheduledFuture<?>> spTasks = new java.util.concurrent.ConcurrentHashMap<>();
+    private final ScheduledExecutorService gameClock = Executors.newSingleThreadScheduledExecutor(r -> {
+        Thread thread = new Thread(r, "monster-game-clock");
+        thread.setDaemon(true);
+        return thread;
+    });
 
     public static void main(String[] args) throws IOException {
         int port = args.length > 0 ? Integer.parseInt(args[0]) : 5000;
@@ -29,6 +32,7 @@ public final class GameServer {
     private void serve(int port) throws IOException {
         try (ServerSocket server = new ServerSocket(port)) {
             System.out.println("[SERVER] Listening on port " + port);
+            gameClock.scheduleAtFixedRate(this::tickMonsters, 1, 1, TimeUnit.SECONDS);
             while (true) {
                 Socket socket = server.accept();
                 new Thread(new ClientHandler(this, socket), "client-handler").start();
@@ -36,6 +40,7 @@ public final class GameServer {
         }
     }
 
+    // 플레이어 등록
     boolean join(ClientHandler client, String name) {
         synchronized (lock) {
             if (name.isBlank() || name.length() > 20 || !name.matches("[\\p{L}\\p{N}_-]+")) {
@@ -60,7 +65,6 @@ public final class GameServer {
     void listRooms(ClientHandler client) {
         synchronized (lock) {
             if (!registered(client)) return;
-            // 제목에는 공백/콜론을 허용하지 않아 한 줄 문자열로 안전하게 파싱됩니다.
             StringBuilder list = new StringBuilder(Protocol.ROOM_LIST_RESULT);
             for (GameRoom room : rooms.values()) list.append(' ').append(room.summary());
             client.send(list.toString());
@@ -121,34 +125,8 @@ public final class GameServer {
             roomState(room);
         }
     }
-    
-    private void startSpRegenTask(GameRoom room) {
-        stopSpRegenTask(room.id);
 
-        java.util.concurrent.ScheduledFuture<?> task =
-                spScheduler.scheduleAtFixedRate(() -> {
-                    synchronized (lock) {
-                        if (!room.started || room.game == null) {
-                            return;
-                        }
-
-                        // 두 플레이어에게 각각 SP 50 지급
-                        room.game.regenerateSp(50);
-
-                        // 변경된 SP를 각 클라이언트에 전송
-                        broadcastDiceState(room);
-                    }
-                }, 3, 3, java.util.concurrent.TimeUnit.SECONDS);
-
-        spTasks.put(room.id, task);
-    }
-
-    private void stopSpRegenTask(int roomId) {
-        java.util.concurrent.ScheduledFuture<?> task = spTasks.remove(roomId);
-        if (task != null) {
-            task.cancel(false);
-        }
-    }
+    // 준비 상태 확인 후 게임 시작
     void requestStart(ClientHandler client) {
         synchronized (lock) {
             if (!registered(client)) return;
@@ -160,23 +138,34 @@ public final class GameServer {
                 client.send(Protocol.ERROR + " PLAYERS_NOT_READY"); return;
             }
             room.game = new DiceGame(room.members.get(0).getId(), room.members.get(1).getId());
+            room.monsters = new MonsterGame(room.game);
             room.started = true;
-            startSpRegenTask(room);
-
             broadcast(room, Protocol.START + " " + room.id);
             broadcastDiceState(room);
             roomState(room);
-
-            System.out.println("[SERVER] Room " + room.id + " started");
+            System.out.println("[SERVER] Room " + room.id + " started (gameplay pending)");
         }
     }
 
-    /** 클라이언트의 소환/합성/강화는 서버에서 검증하고, 방 안에만 결과를 전송합니다. */
     void summon(ClientHandler client) {
         synchronized (lock) {
             GameRoom room = playingRoom(client);
             if (room == null) return;
             sendAction(room, client, room.game.summon(client.getId()));
+        }
+    }
+
+    void eliteSummon(ClientHandler client) {
+        synchronized (lock) {
+            GameRoom room = playingRoom(client);
+            if (room == null) return;
+            DiceGame.ActionResult result = room.monsters.eliteSummon(client.getId());
+            if (!result.success()) {
+                client.send(Protocol.ERROR + " " + result.error);
+                return;
+            }
+            broadcastDiceState(room);
+            broadcastMonsterState(room);
         }
     }
 
@@ -218,26 +207,38 @@ public final class GameServer {
     private void sendAction(GameRoom room, ClientHandler client, DiceGame.ActionResult result) {
         if (!result.success()) {
             client.send(Protocol.ERROR + " " + result.error);
-            sendDiceState(room, client);   // ← 추가: 실패해도 최신 SP/비용 재전송
             return;
         }
         broadcastDiceState(room);
     }
 
-    private void sendDiceState(GameRoom room, ClientHandler client) {
+    // 주사위 상태 전송
+    private void broadcastDiceState(GameRoom room) {
         if (room.game == null) return;
-        DiceGame.PlayerField field = room.game.player(client.getId());
-        if (field != null) client.send(field.encode());
+        for (DiceGame.PlayerField field : room.game.fields()) broadcast(room, field.encode());
     }
 
-    private void broadcastDiceState(GameRoom room) {
-        if (room.game == null) {
-            return;
-        }
+    private void broadcastMonsterState(GameRoom room) {
+        if (room.monsters == null) return;
+        for (String state : room.monsters.states()) broadcast(room, state);
+    }
 
-        // 두 플레이어의 보드 상태를 각각 방 전체에 전송
-        for (DiceGame.PlayerField field : room.game.fields()) {
-            broadcast(room, field.encode());
+    private void tickMonsters() {
+        synchronized (lock) {
+            for (GameRoom room : rooms.values()) {
+                if (!room.started || room.monsters == null) continue;
+                room.monsters.tick();
+                broadcastMonsterState(room);
+                broadcastDiceState(room);
+                if (room.monsters.finished()) {
+                    broadcast(room, Protocol.GAME_OVER + " " + room.monsters.winnerId());
+                    room.started = false;
+                    room.game = null;
+                    room.monsters = null;
+                    for (ClientHandler member : room.members) member.setReady(false);
+                    roomState(room);
+                }
+            }
         }
     }
 
@@ -277,16 +278,15 @@ public final class GameServer {
         if (acknowledge) client.send(Protocol.ROOM_LEFT + " " + room.id);
         broadcast(room, Protocol.PLAYER_LEFT + " " + client.getId());
         if (room.members.isEmpty()) {
-            stopSpRegenTask(room.id); // 💡 추가
             rooms.remove(room.id);
             return;
         }
         if (room.host == client) room.host = room.members.get(0);
         if (room.started) {
-            stopSpRegenTask(room.id); // 💡 추가
-            // 상대가 퇴장하면 진행 중인 게임을 중단하고 남은 플레이어를 대기 상태로 되돌립니다.
+
             room.started = false;
             room.game = null;
+            room.monsters = null;
             for (ClientHandler member : room.members) member.setReady(false);
             broadcast(room, Protocol.ERROR + " GAME_INTERRUPTED");
         }
