@@ -8,6 +8,7 @@ import java.awt.event.ActionListener;
 
 public class GameFrame extends JFrame {
 
+    private MainBackgroundPanel mainBgPanel;
     private Board topBoard;
     private Board bottomBoard;
     private BulletLayerPanel bulletLayer;
@@ -36,7 +37,7 @@ public class GameFrame extends JFrame {
         JLayeredPane layeredPane = new JLayeredPane();
         layeredPane.setLayout(null);
 
-        MainBackgroundPanel mainBgPanel = new MainBackgroundPanel();
+        mainBgPanel = new MainBackgroundPanel();
         mainBgPanel.setBounds(0, 0, 500, 880);
 
         bulletLayer = new BulletLayerPanel();
@@ -138,6 +139,8 @@ public class GameFrame extends JFrame {
                     () -> parseAndApplyDiceState(payload)
             );
 
+        } else if (line.startsWith(Protocol.MONSTER_STATE + " ")) {
+            mainBgPanel.applyMonsterState(line, NetworkClient.getInstance().getMyPlayerId());
         } else if (line.startsWith(Protocol.ERROR + " ")) {
             String errMsg = line.substring(
                     Protocol.ERROR.length() + 1

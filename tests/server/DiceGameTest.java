@@ -24,8 +24,13 @@ public final class DiceGameTest {
         require(a.sp == 75 && a.cells[1] != null, "second summon cost");
         require("EMPTY_CELL".equals(g.merge(1, 0, 2).error), "empty merge rejection");
         require("INVALID_CELL".equals(g.merge(1, 0, 0).error), "same-cell rejection");
-        require(g.merge(1, 0, 1).success(), "same type/level merges");
-        require(a.cells[0] == null && a.cells[1].level == 2, "merge result and consumed source");
+        for (String type : DiceGame.TYPES) {
+            a.cells[0] = new DiceGame.Dice(type, 1);
+            a.cells[1] = new DiceGame.Dice(type, 1);
+            require(g.merge(1, 0, 1).success(), "same type/level merges");
+            require(a.cells[0] == null && a.cells[1].level == 2 && a.cells[1].type.equals(type),
+                    "merge consumes source and retains " + type);
+        }
         require("INVALID_DICE_TYPE".equals(g.upgrade(1, "UNKNOWN").error), "unknown type");
         require(g.upgrade(1, "BASIC").success(), "upgrade");
         require(a.sp == 25 && a.upgrades[0] == 1, "upgrade cost");

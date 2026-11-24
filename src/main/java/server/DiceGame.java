@@ -105,7 +105,7 @@ final class DiceGame {
             return ActionResult.error("MERGE_MISMATCH");
         if (a.level >= MAX_LEVEL) return ActionResult.error("MAX_LEVEL");
         field.cells[from] = null;
-        field.cells[to] = new Dice(TYPES[random.nextInt(TYPES.length)], a.level + 1);
+        field.cells[to] = new Dice(a.type, a.level + 1);
         return ActionResult.ok();
     }
 
