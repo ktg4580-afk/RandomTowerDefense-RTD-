@@ -20,11 +20,6 @@ import javax.swing.JTextArea;
 import javax.swing.JTextField;
 import javax.swing.SwingUtilities;
 
-<<<<<<< Updated upstream
-/** 초기 네트워크 테스트 UI. 게임 필드 및 게임 로직은 아직 없습니다. */
-=======
-/* 초기 네트워크 테스트 UI. 게임 필드 및 게임 로직은 아직 없습니다. */
->>>>>>> Stashed changes
 public final class GameClient extends JFrame {
     private final JTextField host = new JTextField("127.0.0.1", 11);
     private final JTextField port = new JTextField("5000", 5);
@@ -59,10 +54,6 @@ public final class GameClient extends JFrame {
         top.add(new JLabel("이름")); top.add(name);
         top.add(connectButton); top.add(readyButton);
         top.add(spLabel); top.add(summonButton);
-<<<<<<< Updated upstream
-=======
-
->>>>>>> Stashed changes
         log.setEditable(false);
 
         JPanel bottom = new JPanel(new BorderLayout(8, 8));
@@ -124,28 +115,22 @@ public final class GameClient extends JFrame {
                 writer = null;
                 socket = null;
                 SwingUtilities.invokeLater(() -> {
-<<<<<<< Updated upstream
                     readyButton.setEnabled(false); chatButton.setEnabled(false);
                     summonButton.setEnabled(false);
                     connectButton.setEnabled(true); status.setText("연결 종료");
-=======
                     readyButton.setEnabled(false);
                     chatButton.setEnabled(false);
                     summonButton.setEnabled(false);
                     connectButton.setEnabled(true);
                     status.setText("연결 종료");
->>>>>>> Stashed changes
                 });
             }
         }, "server-reader").start();
     }
 
     private void receive(String line) {
-<<<<<<< Updated upstream
-=======
         append("수신: " + line);
 
->>>>>>> Stashed changes
         if (line.startsWith(Protocol.JOIN_OK + " ")) {
             String payload = line.substring(Protocol.JOIN_OK.length() + 1).strip();
             try {
@@ -191,11 +176,8 @@ public final class GameClient extends JFrame {
             } else if ("FIELD_FULL".equals(code)) {
                 JOptionPane.showMessageDialog(this, "보드가 가득 찼습니다. 합성으로 칸을 비워주세요.");
             }
-<<<<<<< Updated upstream
         } else {
             append(line);
-=======
->>>>>>> Stashed changes
         }
     }
 
@@ -214,14 +196,9 @@ public final class GameClient extends JFrame {
         PrintWriter out = writer;
         if (out != null) out.println(line);
     }
-<<<<<<< Updated upstream
-    private void append(String line) { log.append(line + "\n"); log.setCaretPosition(log.getDocument().getLength()); }
-}
-=======
 
     private void append(String line) {
         log.append(line + "\n");
         log.setCaretPosition(log.getDocument().getLength());
     }
 }
->>>>>>> Stashed changes
