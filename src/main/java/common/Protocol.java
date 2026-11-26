@@ -1,6 +1,9 @@
 package common;
 
+<<<<<<< Updated upstream
 /** 한 줄에 명령 1개, UTF-8, 공백으로 명령/인자를 구분합니다. */
+=======
+>>>>>>> Stashed changes
 public final class Protocol {
     private Protocol() { }
     public static final String JOIN = "/JOIN";
