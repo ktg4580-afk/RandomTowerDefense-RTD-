@@ -154,10 +154,8 @@ public class StartScreen extends JFrame {
 
         } else if (line.startsWith(Protocol.ROOM_CREATED + " ") || line.startsWith(Protocol.ROOM_JOINED + " ")) {
             // 방 생성 또는 참가가 성공하면 RoomScreen으로 이동
-            SwingUtilities.invokeLater(() -> {
-                new RoomScreen();
-                dispose();
-            });
+            new RoomScreen();
+            dispose();
 
         } else if (line.startsWith(Protocol.JOIN_FAIL + " ") || line.startsWith(Protocol.ERROR + " ")) {
             SwingUtilities.invokeLater(() -> {

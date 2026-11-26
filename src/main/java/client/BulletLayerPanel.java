@@ -40,6 +40,12 @@ public class BulletLayerPanel extends JPanel {
     }
 
     @Override
+    public boolean contains(int x, int y) {
+        // The animation layer must let the board receive mouse input.
+        return false;
+    }
+
+    @Override
     protected void paintComponent(Graphics g) {
         super.paintComponent(g);
         Graphics2D g2d = (Graphics2D) g;

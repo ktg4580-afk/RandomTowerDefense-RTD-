@@ -1,5 +1,7 @@
 package server;
 
+import common.Protocol;
+
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -11,7 +13,7 @@ final class MonsterGame {
     static final int ELITE_COOLDOWN_TICKS = 10;
     static final int WAVE_TICKS = 15;
     static final int SPAWN_TICKS = 3;
-    static final int PATH_LENGTH = 12;
+    static final int PATH_LENGTH = Protocol.MONSTER_PATH_LENGTH;
     static final int KILL_REWARD = 5;
     static final String[] ELITE_TYPES = {"TANK", "SPRINTER", "SHIELDED"};
 

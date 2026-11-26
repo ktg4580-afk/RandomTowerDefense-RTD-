@@ -5,4 +5,4 @@ New-Item -ItemType Directory -Force out | Out-Null
 $files = Get-ChildItem -Path src/main/java -Filter *.java -Recurse | ForEach-Object FullName
 & javac -encoding UTF-8 -d out @files
 if ($LASTEXITCODE -ne 0) { throw "Java compile failed" }
-& java -cp out client.GameClient
+& java -cp out client.StartScreen

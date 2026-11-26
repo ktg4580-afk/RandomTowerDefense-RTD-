@@ -135,6 +135,17 @@ def main():
         outsider.expect("/ERROR GAME_NOT_STARTED")
         print("PASS: elite cooldown and unrelated room validation")
 
+        for client in (a, b):
+            for player_id, expected_sp in ((1, "110"), (2, "150")):
+                deadline = time.monotonic() + 5
+                while time.monotonic() < deadline:
+                    state = client.expect(f"/DICE_STATE {player_id} ", deadline - time.monotonic())
+                    if state.split()[2] == expected_sp:
+                        break
+                else:
+                    raise AssertionError(f"Player {player_id} did not receive SP regeneration")
+        print("PASS: both clients receive the scheduled SP increase for both players")
+
         b.send("/ROOM_LEAVE")
         b.expect("/ROOM_LEFT 1")
         a.expect("/PLAYER_LEFT 2")

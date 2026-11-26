@@ -82,12 +82,10 @@ public class RoomScreen extends JFrame {
 
         if (line.startsWith(Protocol.ROOM_STATE + " ")) {
             parseAndDisplayRoomState(line.substring(Protocol.ROOM_STATE.length() + 1).strip());
-        } else if (line.startsWith(Protocol.START)) {
+        } else if (line.startsWith(Protocol.START + " ")) {
             isTransitioning = true;
-            SwingUtilities.invokeLater(() -> {
-                new GameFrame();
-                dispose();
-            });
+            new GameFrame();
+            dispose();
         } else if (line.startsWith(Protocol.ERROR + " ")) {
             SwingUtilities.invokeLater(() -> {
                 JOptionPane.showMessageDialog(this, "알림: " + line.substring(Protocol.ERROR.length() + 1));
@@ -97,7 +95,7 @@ public class RoomScreen extends JFrame {
 
     private void parseAndDisplayRoomState(String data) {
         String[] tokens = data.split("\\s+");
-        String myNickname = NetworkClient.getInstance().getMyNickname();
+        String myPlayerId = Integer.toString(NetworkClient.getInstance().getMyPlayerId());
         Boolean myServerReady = null;
 
         StringBuilder sb = new StringBuilder("<html><div style='text-align: center;'>");
@@ -110,9 +108,9 @@ public class RoomScreen extends JFrame {
                 String state = userParts[1];
                 boolean ready = "READY".equals(state);
 
-                String displayName = playerName;
-                if (playerName.equals(myNickname)) {
-                    displayName += " (나)";
+                String displayName = "플레이어 " + playerName;
+                if (playerName.equals(myPlayerId)) {
+                    displayName = NetworkClient.getInstance().getMyNickname() + " (나)";
                     myServerReady = ready;
                 }
 

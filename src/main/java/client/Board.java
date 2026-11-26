@@ -19,7 +19,7 @@ public class Board extends JPanel {
         this.bulletLayer = bulletLayer;
     }
 
-    public Board(String playerTitle) {
+    public Board(boolean allowMerge) {
         setBackground(Color.WHITE);
         setLayout(new FlowLayout(FlowLayout.CENTER, 5, 12));
 
@@ -30,8 +30,10 @@ public class Board extends JPanel {
 
         for (int r = 0; r < ROWS; r++) {
             for (int c = 0; c < COLS; c++) {
-                tiles[r][c] = new BoardTile();
-                gridPanel.add(tiles[r][c]);
+                BoardTile tile = new BoardTile();
+                tiles[r][c] = tile;
+                gridPanel.add(tile);
+                if (allowMerge) tile.setupMouseListeners(this);
             }
         }
 
@@ -113,14 +115,12 @@ public class Board extends JPanel {
         return true;
     }
 
-    public BoardTile getTileAtScreenPoint(Point screenPoint) {
+    private BoardTile getTileAt(Point boardPoint) {
         for (int r = 0; r < ROWS; r++) {
             for (int c = 0; c < COLS; c++) {
-                Rectangle bounds = tiles[r][c].getBounds();
-                bounds.setLocation(tiles[r][c].getLocationOnScreen());
-                if (bounds.contains(screenPoint)) {
-                    return tiles[r][c];
-                }
+                BoardTile tile = tiles[r][c];
+                Point tilePoint = SwingUtilities.convertPoint(this, boardPoint, tile);
+                if (tile.contains(tilePoint)) return tile;
             }
         }
         return null;
@@ -137,15 +137,15 @@ public class Board extends JPanel {
         return -1;
     }
 
-    public void processMergeOrMove(BoardTile source, BoardTile target) {
+    private void requestMerge(BoardTile source, BoardTile target) {
         int fromIndex = getTileIndex(source);
         int toIndex = getTileIndex(target);
 
-        if (fromIndex < 0 || toIndex < 0 || fromIndex == toIndex) {
+        if (fromIndex < 0 || toIndex < 0 || fromIndex == toIndex || !target.hasDice()) {
             return;
         }
 
-        // 서버 권위 동기화: 합성/이동 요청을 서버로 전송하고,
+        // 합성 요청을 서버로 전송하고,
         // 실제 보드 상태 반영은 서버가 브로드캐스트하는 /DICE_STATE를 통해 처리합니다.
         NetworkClient.getInstance().send(Protocol.MERGE + " " + fromIndex + " " + toIndex);
     }
@@ -156,7 +156,7 @@ public class Board extends JPanel {
         private RapidDice currentRapidDice;
         private SlowDice currentSlowDice;
 
-        private static BoardTile draggedTile = null;
+        private boolean dragging;
 
         public BoardTile() {
             setBackground(new Color(245, 245, 245));
@@ -167,7 +167,6 @@ public class Board extends JPanel {
             imageLabel.setHorizontalAlignment(JLabel.CENTER);
             add(imageLabel, BorderLayout.CENTER);
 
-            setupMouseListeners();
         }
 
         public void removeDiceForMove() {
@@ -179,33 +178,28 @@ public class Board extends JPanel {
             repaint();
         }
 
-        private void setupMouseListeners() {
-            addMouseListener(new java.awt.event.MouseAdapter() {
+        private void setupMouseListeners(Board board) {
+            java.awt.event.MouseAdapter listener = new java.awt.event.MouseAdapter() {
                 @Override
-                public void mousePressed(java.awt.event.MouseEvent e) {
-                    if (!hasDice()) return;
-                    draggedTile = BoardTile.this;
-                    setBorder(new LineBorder(new Color(70, 130, 180), 3));
+                public void mousePressed(java.awt.event.MouseEvent event) {
+                    if (!SwingUtilities.isLeftMouseButton(event) || !hasDice()) return;
+                    dragging = true;
+                    setBorder(new LineBorder(new Color(70, 130, 180), 2));
                 }
 
                 @Override
-                public void mouseReleased(java.awt.event.MouseEvent e) {
-                    if (draggedTile == null) return;
+                public void mouseReleased(java.awt.event.MouseEvent event) {
+                    if (!SwingUtilities.isLeftMouseButton(event) || !dragging) return;
+                    dragging = false;
+                    setBorder(new LineBorder(new Color(200, 200, 200), 2));
 
-                    Point dropPoint = e.getLocationOnScreen();
-                    Board board = (Board) SwingUtilities.getAncestorOfClass(Board.class, BoardTile.this);
-                    if (board != null) {
-                        BoardTile targetTile = board.getTileAtScreenPoint(dropPoint);
-
-                        if (targetTile != null && targetTile != draggedTile) {
-                            board.processMergeOrMove(draggedTile, targetTile);
-                        }
-                    }
-
-                    draggedTile.setBorder(new LineBorder(new Color(200, 200, 200), 2));
-                    draggedTile = null;
+                    Point dropPoint = SwingUtilities.convertPoint(event.getComponent(), event.getPoint(), board);
+                    BoardTile target = board.getTileAt(dropPoint);
+                    if (hasDice() && target != null) board.requestMerge(BoardTile.this, target);
                 }
-            });
+            };
+            addMouseListener(listener);
+            imageLabel.addMouseListener(listener);
         }
 
         public boolean hasDice() {

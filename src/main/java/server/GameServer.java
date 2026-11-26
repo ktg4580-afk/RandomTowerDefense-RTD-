@@ -13,6 +13,8 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 public final class GameServer {
+    private static final int SP_REGEN_INTERVAL_TICKS = 3;
+    private static final int SP_REGEN_AMOUNT = 50;
     private final Object lock = new Object();
     private final List<ClientHandler> players = new ArrayList<>();
     private final Map<Integer, GameRoom> rooms = new LinkedHashMap<>();
@@ -228,6 +230,9 @@ public final class GameServer {
             for (GameRoom room : rooms.values()) {
                 if (!room.started || room.monsters == null) continue;
                 room.monsters.tick();
+                if (!room.monsters.finished() && room.monsters.tickCount() % SP_REGEN_INTERVAL_TICKS == 0) {
+                    for (DiceGame.PlayerField field : room.game.fields()) field.sp += SP_REGEN_AMOUNT;
+                }
                 broadcastMonsterState(room);
                 broadcastDiceState(room);
                 if (room.monsters.finished()) {
