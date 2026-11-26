@@ -3,42 +3,21 @@ package client;
 import common.Protocol;
 import javax.swing.*;
 import java.awt.*;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
+import java.awt.geom.Point2D;
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
 
 public class MainBackgroundPanel extends JPanel {
-    private record Monster(String type, int hp, int maxHp, int position) {}
+    private record Monster(int id, String type, int hp, int maxHp, int position) {}
+
+    public record FrontMonsterTarget(int monsterId, Point2D.Double point) {}
 
     private List<Monster> ownMonsters = List.of();
     private List<Monster> opponentMonsters = List.of();
 
-    private List<Bullet> bullets = new ArrayList<>();
-    private Timer gameTimer;
-
     public MainBackgroundPanel() {
         setLayout(new GridBagLayout());
         setBackground(Color.WHITE);
-
-        // 60 FPS 주사위/총알 렌더링 루프 (약 16ms 마다 실행)
-        gameTimer = new Timer(16, new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                // 활성화된 총알들 위치 업데이트
-                Iterator<Bullet> iterator = bullets.iterator();
-                while (iterator.hasNext()) {
-                    Bullet bullet = iterator.next();
-                    bullet.update();
-                    if (!bullet.isActive()) {
-                        iterator.remove(); // 도착한 총알 제거
-                    }
-                }
-                repaint(); // 화면 다시 그리기
-            }
-        });
-        gameTimer.start();
     }
 
     void applyMonsterState(String line, int myPlayerId) {
@@ -53,11 +32,12 @@ public class MainBackgroundPanel extends JPanel {
             for (int i = 7; i < fields.length; i++) {
                 String[] monster = fields[i].split(":");
                 if (monster.length != 5) return;
+                int id = Integer.parseInt(monster[0]);
                 int hp = Integer.parseInt(monster[2]);
                 int maxHp = Integer.parseInt(monster[3]);
                 int position = Integer.parseInt(monster[4]);
                 if (hp <= 0 || hp > maxHp || position < 0 || position >= Protocol.MONSTER_PATH_LENGTH) return;
-                monsters.add(new Monster(monster[1], hp, maxHp, position));
+                monsters.add(new Monster(id, monster[1], hp, maxHp, position));
             }
             if (playerId == myPlayerId) ownMonsters = monsters;
             else opponentMonsters = monsters;
@@ -67,10 +47,66 @@ public class MainBackgroundPanel extends JPanel {
         }
     }
 
-    // 외부(보드나 프레임)에서 총알을 생성해 추가하는 메서드
-    public void addBullet(double startX, double startY, double targetX, double targetY) {
-        bullets.add(new Bullet(startX, startY, targetX, targetY));
-        repaint();
+    public boolean isMonsterAlive(boolean ownLane, int monsterId) {
+        if (monsterId < 0) return true;
+        List<Monster> monsters = ownLane ? ownMonsters : opponentMonsters;
+        if (monsters == null || monsters.isEmpty()) return false;
+        for (Monster monster : monsters) {
+            if (monster.id() == monsterId && monster.hp() > 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public Point2D.Double getFrontMonsterTarget(boolean ownLane) {
+        FrontMonsterTarget target = getFrontMonsterTarget(ownLane, null);
+        return target != null ? target.point() : null;
+    }
+
+    public FrontMonsterTarget getFrontMonsterTarget(boolean ownLane, BulletLayerPanel bulletLayer) {
+        if (getWidth() <= 0 || getHeight() <= 0) {
+            return null;
+        }
+
+        List<Monster> monsters = ownLane ? ownMonsters : opponentMonsters;
+        if (monsters == null || monsters.isEmpty()) {
+            return null;
+        }
+
+        Monster front = null;
+        for (Monster monster : monsters) {
+            if (monster.hp() <= 0) continue;
+            int incoming = (bulletLayer != null) ? bulletLayer.getIncomingDamageForMonster(monster.id()) : 0;
+            int effectiveHp = monster.hp() - incoming;
+            if (effectiveHp <= 0) continue;
+
+            if (front == null || monster.position() > front.position()) {
+                front = monster;
+            }
+        }
+        if (front == null) {
+            return null;
+        }
+
+        int pathWidth = 55;
+        int left = pathWidth / 2;
+        int right = Math.max(left, getWidth() - left);
+        int startY = ownLane ? getHeight() - 65 : 65;
+        int centerY = getHeight() / 2 + (ownLane ? 14 : -14);
+        int verticalLength = Math.abs(centerY - startY);
+        double routeLength = 2 * verticalLength + Math.max(0, right - left);
+
+        if (routeLength <= 0) {
+            return null;
+        }
+
+        double distance = routeLength * front.position() / Protocol.MONSTER_PATH_LENGTH;
+        double x = left + Math.max(0, Math.min(right - left, distance - verticalLength));
+        double vertical = Math.min(distance, routeLength - distance);
+        double y = startY + (ownLane ? -1 : 1) * Math.min(verticalLength, vertical);
+
+        return new FrontMonsterTarget(front.id(), new Point2D.Double(x, y));
     }
 
     @Override
@@ -86,8 +122,8 @@ public class MainBackgroundPanel extends JPanel {
         // 1. H모양 길 배경 그리기
         g2d.setColor(new Color(235, 235, 235));
         int pathWidth = 55;
-        int leftX = 0;                          
-        int rightX = width - pathWidth;         
+        int leftX = 0;
+        int rightX = width - pathWidth;
         int centerY = height / 2 - pathWidth / 2;
 
         g2d.fillRect(leftX, 0, pathWidth, height);
@@ -96,24 +132,19 @@ public class MainBackgroundPanel extends JPanel {
 
         g2d.setColor(new Color(200, 200, 200));
         g2d.setStroke(new BasicStroke(2));
-        
+
         g2d.drawRect(leftX, 0, pathWidth, height);
         g2d.drawRect(rightX, 0, pathWidth, height);
-        
+
         g2d.setColor(new Color(235, 235, 235));
         g2d.fillRect(leftX + pathWidth, centerY + 1, rightX - leftX - pathWidth, pathWidth - 1);
-        
+
         g2d.setColor(new Color(200, 200, 200));
         g2d.drawLine(leftX + pathWidth, centerY, rightX, centerY);
         g2d.drawLine(leftX + pathWidth, centerY + pathWidth, rightX, centerY + pathWidth);
 
         drawMonsters(g2d, opponentMonsters, false, pathWidth);
         drawMonsters(g2d, ownMonsters, true, pathWidth);
-
-        // 2. 패널 위에 존재하는 모든 총알들 그리기
-        for (Bullet bullet : bullets) {
-            bullet.draw(g2d);
-        }
     }
 
     private void drawMonsters(Graphics2D graphics, List<Monster> monsters, boolean ownLane, int pathWidth) {

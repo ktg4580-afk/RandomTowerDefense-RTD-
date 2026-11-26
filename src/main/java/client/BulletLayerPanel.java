@@ -4,19 +4,21 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.awt.geom.Point2D;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.function.IntPredicate;
+import java.util.function.Supplier;
 
 public class BulletLayerPanel extends JPanel {
-    private List<Bullet> bullets = new ArrayList<>();
-    private Timer gameTimer;
+    private final List<Bullet> bullets = new ArrayList<>();
+    private final Timer gameTimer;
 
     public BulletLayerPanel() {
-        setOpaque(false); // 배경을 투명하게 설정하여 아래 보드가 다 보이게 함
-        setLayout(null);  // 절대 좌표 배치를 위해 null 레이아웃 사용
+        setOpaque(false);
+        setLayout(null);
 
-        // 60 FPS 총알 이동 갱신 타이머
         gameTimer = new Timer(16, new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent e) {
@@ -39,9 +41,44 @@ public class BulletLayerPanel extends JPanel {
         repaint();
     }
 
+    public void addHomingBullet(
+            double startX,
+            double startY,
+            Supplier<Point2D.Double> targetSupplier,
+            IntPredicate aliveCheck,
+            Bullet.HitListener hitListener,
+            double fallbackX,
+            double fallbackY,
+            int damage,
+            int targetMonsterId
+    ) {
+        bullets.add(new Bullet(
+                startX,
+                startY,
+                targetSupplier,
+                aliveCheck,
+                hitListener,
+                fallbackX,
+                fallbackY,
+                damage,
+                targetMonsterId
+        ));
+        repaint();
+    }
+
+    public int getIncomingDamageForMonster(int monsterId) {
+        if (monsterId < 0) return 0;
+        int sum = 0;
+        for (Bullet bullet : bullets) {
+            if (bullet.isActive() && bullet.getTargetMonsterId() == monsterId) {
+                sum += bullet.getDamage();
+            }
+        }
+        return sum;
+    }
+
     @Override
     public boolean contains(int x, int y) {
-        // The animation layer must let the board receive mouse input.
         return false;
     }
 
@@ -51,7 +88,6 @@ public class BulletLayerPanel extends JPanel {
         Graphics2D g2d = (Graphics2D) g;
         g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
-        // 모든 활성 총알 그리기
         for (Bullet bullet : bullets) {
             bullet.draw(g2d);
         }

@@ -7,7 +7,7 @@ import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 
 public class GameFrame extends JFrame {
-
+    private DragLayerPanel dragLayer;
     private MainBackgroundPanel mainBgPanel;
     private Board topBoard;
     private Board bottomBoard;
@@ -43,13 +43,19 @@ public class GameFrame extends JFrame {
         bulletLayer = new BulletLayerPanel();
         bulletLayer.setBounds(0, 0, 500, 880);
 
-        // 위쪽 보드: 상대방
+        dragLayer = new DragLayerPanel();
+        dragLayer.setBounds(0, 0, 500, 880);
+
+     // 위쪽 보드: 상대방
         topBoard = new Board(false);
         topBoard.setBulletLayer(bulletLayer);
+        topBoard.setBackgroundPanel(mainBgPanel, false);
 
         // 아래쪽 보드: 나
         bottomBoard = new Board(true);
         bottomBoard.setBulletLayer(bulletLayer);
+        bottomBoard.setDragLayer(dragLayer);
+        bottomBoard.setBackgroundPanel(mainBgPanel, true);
 
         // 내 보드 + 소환 버튼 패널
         JPanel bottomAreaPanel = new JPanel(new BorderLayout());
@@ -84,6 +90,7 @@ public class GameFrame extends JFrame {
 
         layeredPane.add(mainBgPanel, JLayeredPane.DEFAULT_LAYER);
         layeredPane.add(bulletLayer, JLayeredPane.PALETTE_LAYER);
+        layeredPane.add(dragLayer, JLayeredPane.DRAG_LAYER);
 
         // 우측 상단 시간 표시
         timerLabel = new JLabel("00:00", JLabel.RIGHT);

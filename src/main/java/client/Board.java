@@ -14,9 +14,21 @@ public class Board extends JPanel {
     private BoardTile[][] tiles;
 
     private BulletLayerPanel bulletLayer;
+    private DragLayerPanel dragLayer;
+    private MainBackgroundPanel backgroundPanel;
+    private boolean ownLane = true;
 
     public void setBulletLayer(BulletLayerPanel bulletLayer) {
         this.bulletLayer = bulletLayer;
+    }
+
+    public void setDragLayer(DragLayerPanel dragLayer) {
+        this.dragLayer = dragLayer;
+    }
+
+    public void setBackgroundPanel(MainBackgroundPanel backgroundPanel, boolean ownLane) {
+        this.backgroundPanel = backgroundPanel;
+        this.ownLane = ownLane;
     }
 
     public Board(boolean allowMerge) {
@@ -49,7 +61,9 @@ public class Board extends JPanel {
                 BoardTile tile = tiles[r][c];
 
                 if ("-".equals(cell)) {
-                    tile.clearDice();
+                    if (tile.hasDice()) {
+                        tile.clearDice();
+                    }
                 } else {
                     String[] parts = cell.split(":");
                     String type = parts[0];
@@ -62,17 +76,20 @@ public class Board extends JPanel {
                         }
                     }
 
-                    // 합성/이동으로 종류나 레벨이 바뀔 수 있으므로 기존 주사위 정리 후 새로 반영
+                    if (tile.matchesDice(type, level)) {
+                        continue;
+                    }
+
                     tile.clearDice();
 
                     if ("BASIC".equals(type)) {
-                        BasicDice dice = new BasicDice(this.bulletLayer, tile, level);
+                        BasicDice dice = new BasicDice(this.bulletLayer, this.backgroundPanel, this.ownLane, tile, level);
                         tile.setBasicDice(dice);
                     } else if ("RAPID".equals(type)) {
-                        RapidDice dice = new RapidDice(this.bulletLayer, tile, level);
+                        RapidDice dice = new RapidDice(this.bulletLayer, this.backgroundPanel, this.ownLane, tile, level);
                         tile.setRapidDice(dice);
                     } else if ("SLOW".equals(type)) {
-                        SlowDice dice = new SlowDice(this.bulletLayer, tile, level);
+                        SlowDice dice = new SlowDice(this.bulletLayer, this.backgroundPanel, this.ownLane, tile, level);
                         tile.setSlowDice(dice);
                     }
                 }
@@ -102,13 +119,13 @@ public class Board extends JPanel {
         int diceType = new Random().nextInt(3);
 
         if (diceType == 0) {
-            RapidDice rapidDice = new RapidDice(bulletLayer, targetTile, 1);
+            RapidDice rapidDice = new RapidDice(bulletLayer, this.backgroundPanel, this.ownLane, targetTile, 1);
             targetTile.setRapidDice(rapidDice);
         } else if (diceType == 1) {
-            SlowDice slowDice = new SlowDice(bulletLayer, targetTile, 1);
+            SlowDice slowDice = new SlowDice(bulletLayer, this.backgroundPanel, this.ownLane, targetTile, 1);
             targetTile.setSlowDice(slowDice);
         } else {
-            BasicDice basicDice = new BasicDice(bulletLayer, targetTile, 1);	
+            BasicDice basicDice = new BasicDice(bulletLayer, this.backgroundPanel, this.ownLane, targetTile, 1);
             targetTile.setBasicDice(basicDice);
         }
 
@@ -145,8 +162,6 @@ public class Board extends JPanel {
             return;
         }
 
-        // 합성 요청을 서버로 전송하고,
-        // 실제 보드 상태 반영은 서버가 브로드캐스트하는 /DICE_STATE를 통해 처리합니다.
         NetworkClient.getInstance().send(Protocol.MERGE + " " + fromIndex + " " + toIndex);
     }
 
@@ -166,7 +181,6 @@ public class Board extends JPanel {
             imageLabel = new JLabel();
             imageLabel.setHorizontalAlignment(JLabel.CENTER);
             add(imageLabel, BorderLayout.CENTER);
-
         }
 
         public void removeDiceForMove() {
@@ -178,6 +192,13 @@ public class Board extends JPanel {
             repaint();
         }
 
+        private ImageIcon getCurrentDiceIcon() {
+            if (currentBasicDice != null) return currentBasicDice.getDiceIcon();
+            if (currentRapidDice != null) return currentRapidDice.getDiceIcon();
+            if (currentSlowDice != null) return currentSlowDice.getDiceIcon();
+            return null;
+        }
+
         private void setupMouseListeners(Board board) {
             java.awt.event.MouseAdapter listener = new java.awt.event.MouseAdapter() {
                 @Override
@@ -185,6 +206,24 @@ public class Board extends JPanel {
                     if (!SwingUtilities.isLeftMouseButton(event) || !hasDice()) return;
                     dragging = true;
                     setBorder(new LineBorder(new Color(70, 130, 180), 2));
+
+                    if (board.dragLayer != null) {
+                        Point pt = SwingUtilities.convertPoint(
+                                event.getComponent(), event.getPoint(), board.dragLayer
+                        );
+                        board.dragLayer.startDrag(getCurrentDiceIcon(), pt);
+                    }
+                }
+
+                @Override
+                public void mouseDragged(java.awt.event.MouseEvent event) {
+                    if (!SwingUtilities.isLeftMouseButton(event) || !dragging) return;
+                    if (board.dragLayer != null) {
+                        Point pt = SwingUtilities.convertPoint(
+                                event.getComponent(), event.getPoint(), board.dragLayer
+                        );
+                        board.dragLayer.updateDragPosition(pt);
+                    }
                 }
 
                 @Override
@@ -193,17 +232,36 @@ public class Board extends JPanel {
                     dragging = false;
                     setBorder(new LineBorder(new Color(200, 200, 200), 2));
 
+                    if (board.dragLayer != null) {
+                        board.dragLayer.stopDrag();
+                    }
+
                     Point dropPoint = SwingUtilities.convertPoint(event.getComponent(), event.getPoint(), board);
                     BoardTile target = board.getTileAt(dropPoint);
-                    if (hasDice() && target != null) board.requestMerge(BoardTile.this, target);
+                    if (hasDice() && target != null) {
+                        board.requestMerge(BoardTile.this, target);
+                    }
                 }
             };
             addMouseListener(listener);
+            addMouseMotionListener(listener);
             imageLabel.addMouseListener(listener);
+            imageLabel.addMouseMotionListener(listener);
         }
 
         public boolean hasDice() {
             return currentBasicDice != null || currentRapidDice != null || currentSlowDice != null;
+        }
+
+        public boolean matchesDice(String type, int level) {
+            if ("BASIC".equals(type)) {
+                return currentBasicDice != null && currentBasicDice.level == level;
+            } else if ("RAPID".equals(type)) {
+                return currentRapidDice != null && currentRapidDice.level == level;
+            } else if ("SLOW".equals(type)) {
+                return currentSlowDice != null && currentSlowDice.level == level;
+            }
+            return false;
         }
 
         public void setBasicDice(BasicDice basicDice) {

@@ -20,7 +20,6 @@ import javax.swing.JTextArea;
 import javax.swing.JTextField;
 import javax.swing.SwingUtilities;
 
-/** 초기 네트워크 테스트 UI. 게임 필드 및 게임 로직은 아직 없습니다. */
 public final class GameClient extends JFrame {
     private final JTextField host = new JTextField("127.0.0.1", 11);
     private final JTextField port = new JTextField("5000", 5);
@@ -48,6 +47,7 @@ public final class GameClient extends JFrame {
     private GameClient() {
         super("태산 - 랜덤 타워 디펜스 (네트워크 테스트)");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+
         JPanel top = new JPanel(new FlowLayout(FlowLayout.LEFT));
         top.add(new JLabel("서버")); top.add(host);
         top.add(new JLabel("포트")); top.add(port);
@@ -55,23 +55,30 @@ public final class GameClient extends JFrame {
         top.add(connectButton); top.add(readyButton);
         top.add(spLabel); top.add(summonButton);
         log.setEditable(false);
+
         JPanel bottom = new JPanel(new BorderLayout(8, 8));
         bottom.add(status, BorderLayout.NORTH);
+
         JPanel chatPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
         chatPanel.add(new JLabel("메시지")); chatPanel.add(chat); chatPanel.add(chatButton);
         bottom.add(chatPanel, BorderLayout.SOUTH);
+
         add(top, BorderLayout.NORTH);
         add(new JScrollPane(log), BorderLayout.CENTER);
         add(bottom, BorderLayout.SOUTH);
+
         readyButton.setEnabled(false);
         chatButton.setEnabled(false);
         summonButton.setEnabled(false);
+
         connectButton.addActionListener(e -> connect());
         readyButton.addActionListener(e -> send(Protocol.READY));
         summonButton.addActionListener(e -> send(Protocol.SUMMON));
         chatButton.addActionListener(e -> sendChat());
         chat.addActionListener(e -> sendChat());
-        pack(); setLocationByPlatform(true);
+
+        pack();
+        setLocationByPlatform(true);
     }
 
     private void connect() {
@@ -81,18 +88,21 @@ public final class GameClient extends JFrame {
         final int portNumber;
         try {
             portNumber = Integer.parseInt(port.getText().strip());
-            if (portNumber < 1 || portNumber > 65535 || !nickname.matches("[\\p{L}\\p{N}_-]{1,20}"))
+            if (portNumber < 1 || portNumber > 65535 || !nickname.matches("[\\p{L}\\p{N}_-]{1,20}")) {
                 throw new IllegalArgumentException("포트 또는 이름이 올바르지 않습니다.");
+            }
         } catch (RuntimeException ex) {
             JOptionPane.showMessageDialog(this, "포트(1~65535)와 이름(1~20자, 문자/숫자/_/-)을 확인하세요.");
             connectButton.setEnabled(true);
             return;
         }
+
         new Thread(() -> {
             try (Socket connection = new Socket(hostname, portNumber);
                  BufferedReader in = new BufferedReader(new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8));
                  PrintWriter out = new PrintWriter(new OutputStreamWriter(connection.getOutputStream(), StandardCharsets.UTF_8), true)) {
-                socket = connection; writer = out;
+                socket = connection;
+                writer = out;
                 send(Protocol.JOIN + " " + nickname);
                 String line;
                 while ((line = in.readLine()) != null) {
@@ -102,27 +112,42 @@ public final class GameClient extends JFrame {
             } catch (IOException e) {
                 SwingUtilities.invokeLater(() -> append("연결 오류: " + e.getMessage()));
             } finally {
-                writer = null; socket = null;
+                writer = null;
+                socket = null;
                 SwingUtilities.invokeLater(() -> {
                     readyButton.setEnabled(false); chatButton.setEnabled(false);
                     summonButton.setEnabled(false);
                     connectButton.setEnabled(true); status.setText("연결 종료");
+                    readyButton.setEnabled(false);
+                    chatButton.setEnabled(false);
+                    summonButton.setEnabled(false);
+                    connectButton.setEnabled(true);
+                    status.setText("연결 종료");
                 });
             }
         }, "server-reader").start();
     }
 
     private void receive(String line) {
+        append("수신: " + line);
+
         if (line.startsWith(Protocol.JOIN_OK + " ")) {
+            String payload = line.substring(Protocol.JOIN_OK.length() + 1).strip();
             try {
-                myId = Integer.parseInt(line.substring(Protocol.JOIN_OK.length() + 1).strip());
+                myId = Integer.parseInt(payload);
             } catch (NumberFormatException ignored) {
                 myId = -1;
             }
             readyButton.setEnabled(true);
             chatButton.setEnabled(true);
-            status.setText("접속됨 (id=" + myId + ")");
-            append(line);
+            status.setText("참가 성공 - 플레이어 " + payload);
+        } else if (line.equals(Protocol.START)) {
+            status.setText("두 명 준비 완료 - 게임 시작 알림 수신");
+            readyButton.setEnabled(false);
+        } else if (line.startsWith(Protocol.JOIN_FAIL + " ")) {
+            status.setText("참가 거절 - " + line.substring(Protocol.JOIN_FAIL.length() + 1).strip());
+        } else if (line.startsWith(Protocol.PLAYER_LEFT + " ")) {
+            status.setText("상대 플레이어 연결 종료");
         } else if (line.startsWith(Protocol.DICE_STATE + " ")) {
             String[] t = line.split("\\s+");
             if (t.length < 4) return;
@@ -132,24 +157,24 @@ public final class GameClient extends JFrame {
             } catch (NumberFormatException ex) {
                 return;
             }
-            if (ownerId != myId) return;              // 남의 SP는 무시
+            if (ownerId != myId) return; // 남의 SP는 무시
             mySp = Integer.parseInt(t[2]);
             mySummonCost = Integer.parseInt(t[3]);
             spLabel.setText("SP " + mySp + " / 소환 " + mySummonCost);
-            summonButton.setEnabled(mySp >= mySummonCost);   // 충전되면 자동 복구
-            if (mySp >= mySummonCost) spShort = false;       // 플래그 해제
+            summonButton.setEnabled(mySp >= mySummonCost); // 충전되면 자동 복구
+            if (mySp >= mySummonCost) spShort = false; // 플래그 해제
         } else if (line.startsWith(Protocol.ERROR + " ")) {
             String code = line.substring(Protocol.ERROR.length() + 1).strip();
             if ("NOT_ENOUGH_SP".equals(code)) {
                 if (!spShort) {
                     spShort = true;
-                    JOptionPane.showMessageDialog(this,
-                        "SP가 부족합니다. (현재 " + mySp + " / 필요 " + mySummonCost + ")\nSP가 충전되면 자동으로 다시 소환할 수 있습니다.");
+                    JOptionPane.showMessageDialog(
+                        this,
+                        "SP가 부족합니다. (현재 " + mySp + " / 필요 " + mySummonCost + ")\nSP가 충전되면 자동으로 다시 소환할 수 있습니다."
+                    );
                 }
             } else if ("FIELD_FULL".equals(code)) {
                 JOptionPane.showMessageDialog(this, "보드가 가득 찼습니다. 합성으로 칸을 비워주세요.");
-            } else {
-                append(line);
             }
         } else {
             append(line);
@@ -160,7 +185,8 @@ public final class GameClient extends JFrame {
         String message = chat.getText().strip();
         if (message.isEmpty()) return;
         if (message.length() > 120 || message.contains("\n") || message.contains("\r")) {
-            JOptionPane.showMessageDialog(this, "메시지는 120자 이하, 한 줄만 가능합니다."); return;
+            JOptionPane.showMessageDialog(this, "메시지는 120자 이하, 한 줄만 가능합니다.");
+            return;
         }
         send(Protocol.CHAT + " " + message);
         chat.setText("");
@@ -170,5 +196,9 @@ public final class GameClient extends JFrame {
         PrintWriter out = writer;
         if (out != null) out.println(line);
     }
-    private void append(String line) { log.append(line + "\n"); log.setCaretPosition(log.getDocument().getLength()); }
+
+    private void append(String line) {
+        log.append(line + "\n");
+        log.setCaretPosition(log.getDocument().getLength());
+    }
 }

@@ -1,5 +1,6 @@
 package client;
 
+import common.Protocol;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.ActionEvent;
@@ -9,12 +10,27 @@ import java.awt.image.BufferedImage;
 public abstract class Dice {
     protected ImageIcon diceIcon;
     protected Timer attackTimer;
-    protected BulletLayerPanel bulletLayer; 
+    protected BulletLayerPanel bulletLayer;
+    protected MainBackgroundPanel backgroundPanel;
+    protected boolean ownLane = true;
     protected Board.BoardTile hostTile;
     protected int level = 1;
 
     public Dice(BulletLayerPanel bulletLayer, Board.BoardTile tile, int intervalMs, int level) {
+        this(bulletLayer, null, true, tile, intervalMs, level);
+    }
+
+    public Dice(
+            BulletLayerPanel bulletLayer,
+            MainBackgroundPanel backgroundPanel,
+            boolean ownLane,
+            Board.BoardTile tile,
+            int intervalMs,
+            int level
+    ) {
         this.bulletLayer = bulletLayer;
+        this.backgroundPanel = backgroundPanel;
+        this.ownLane = ownLane;
         this.hostTile = tile;
         this.level = Math.max(1, Math.min(5, level));
         updateDiceImage();
@@ -37,20 +53,53 @@ public abstract class Dice {
         return false;
     }
 
-    // 자식 클래스마다 이미지 경로 규칙이 다르므로 추상 메서드로 정의
     protected abstract void updateDiceImage();
+
+    protected int getAttackDamage() {
+        int base = (this instanceof RapidDice) ? 2 : 1;
+        return base * level;
+    }
 
     protected void shootBullet() {
         if (hostTile == null || bulletLayer == null) return;
 
-        Point tileScreenLoc = SwingUtilities.convertPoint(hostTile, hostTile.getWidth() / 2, hostTile.getHeight() / 2, bulletLayer);
-        
-        double startX = tileScreenLoc.x;
-        double startY = tileScreenLoc.y;
-        double targetX = startX;
-        double targetY = 0; 
+        Point tileLoc = SwingUtilities.convertPoint(
+                hostTile,
+                hostTile.getWidth() / 2,
+                hostTile.getHeight() / 2,
+                bulletLayer
+        );
 
-        bulletLayer.addBullet(startX, startY, targetX, targetY);
+        double startX = tileLoc.x;
+        double startY = tileLoc.y;
+
+        if (backgroundPanel != null) {
+            var front = backgroundPanel.getFrontMonsterTarget(ownLane, bulletLayer);
+            if (front == null || front.point() == null) {
+                return;
+            }
+            int targetId = front.monsterId();
+            bulletLayer.addHomingBullet(
+                    startX,
+                    startY,
+                    () -> {
+                        var current = backgroundPanel.getFrontMonsterTarget(ownLane, bulletLayer);
+                        return current != null ? current.point() : null;
+                    },
+                    id -> backgroundPanel.isMonsterAlive(ownLane, id),
+                    (id, dmg) -> {
+                        if (ownLane && id >= 0 && dmg > 0) {
+                            NetworkClient.getInstance().send(Protocol.BULLET_HIT + " " + id + " " + dmg);
+                        }
+                    },
+                    front.point().x,
+                    front.point().y,
+                    getAttackDamage(),
+                    targetId
+            );
+        } else {
+            bulletLayer.addBullet(startX, startY, startX, 0);
+        }
     }
 
     public void stopAttack() {
