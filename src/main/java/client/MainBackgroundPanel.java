@@ -9,7 +9,7 @@ import java.util.List;
 
 public class MainBackgroundPanel extends JPanel {
     private static final int PATH_WIDTH = 55;
-    private static final long MOVEMENT_NANOS = 1_000_000_000L;
+    private static final long MOVEMENT_NANOS = Protocol.GAME_TICK_MS * 1_000_000L;
 
     private record Monster(int id, String type, int hp, int maxHp, int position,
                            double previousPosition, long movementStarted) {
@@ -18,8 +18,6 @@ public class MainBackgroundPanel extends JPanel {
             return previousPosition + (position - previousPosition) * progress;
         }
     }
-
-    record FrontMonsterTarget(int monsterId, Point2D.Double point) {}
 
     private final Timer movementTimer = new Timer(16, event -> repaint());
     private List<Monster> ownMonsters = List.of();
@@ -75,15 +73,6 @@ public class MainBackgroundPanel extends JPanel {
         } catch (NumberFormatException ignored) {
             // Keep the last valid snapshot.
         }
-    }
-
-    FrontMonsterTarget getFrontMonsterTarget(boolean ownLane) {
-        List<Monster> monsters = ownLane ? ownMonsters : opponentMonsters;
-        Monster front = null;
-        for (Monster monster : monsters) {
-            if (front == null || monster.position() > front.position()) front = monster;
-        }
-        return front == null ? null : new FrontMonsterTarget(front.id(), monsterPoint(front, ownLane, System.nanoTime()));
     }
 
     Point2D.Double getMonsterPoint(boolean ownLane, int monsterId) {

@@ -1,11 +1,14 @@
 package client;
 
+import common.Protocol;
 import java.awt.*;
 import java.awt.geom.Point2D;
 import java.util.function.Supplier;
 
 public class Bullet {
     private double x, y;
+    private final double startX, startY;
+    private final long launchedAt = System.nanoTime();
     private double targetX, targetY;
     private final Supplier<Point2D.Double> targetSupplier;
     private static final double SPEED = 4.0;
@@ -18,8 +21,8 @@ public class Bullet {
 
     Bullet(double startX, double startY, double targetX, double targetY,
            Supplier<Point2D.Double> targetSupplier) {
-        this.x = startX;
-        this.y = startY;
+        this.startX = this.x = startX;
+        this.startY = this.y = startY;
         this.targetX = targetX;
         this.targetY = targetY;
         this.targetSupplier = targetSupplier;
@@ -39,6 +42,11 @@ public class Bullet {
                 targetX = liveTarget.x;
                 targetY = liveTarget.y;
             }
+            double fraction = Math.min(1.0, (System.nanoTime() - launchedAt)
+                    / (Protocol.GAME_TICK_MS * 1_000_000.0));
+            x = startX + (targetX - startX) * fraction;
+            y = startY + (targetY - startY) * fraction;
+            return;
         }
 
         double dx = targetX - x;
@@ -50,6 +58,11 @@ public class Bullet {
         }
         x += dx / distance * SPEED;
         y += dy / distance * SPEED;
+    }
+
+    Point2D.Double impactPoint() {
+        Point2D.Double point = targetSupplier.get();
+        return point == null ? new Point2D.Double(targetX, targetY) : point;
     }
 
     public void draw(Graphics2D g2d) {

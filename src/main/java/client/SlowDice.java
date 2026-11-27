@@ -2,17 +2,16 @@ package client;
 
 public class SlowDice extends Dice {
     public SlowDice(BulletLayerPanel bulletLayer, Board.BoardTile tile, int level) {
-        this(bulletLayer, null, true, tile, level);
+        this(bulletLayer, null, tile, level);
     }
 
     public SlowDice(
             BulletLayerPanel bulletLayer,
             MainBackgroundPanel backgroundPanel,
-            boolean ownLane,
             Board.BoardTile tile,
             int level
     ) {
-        super(bulletLayer, backgroundPanel, ownLane, tile, 2500, level);
+        super(bulletLayer, backgroundPanel, tile, 2500, level);
     }
 
     @Override

@@ -17,6 +17,11 @@ public final class MonsterGameTest {
         field.upgrades[0] = 1;
 
         game.tick();
+        MonsterGame.Monster target = game.lane(10).monsters.get(0);
+        check(target.hp == 5, "launch leaves HP unchanged until impact");
+        check(game.attackEvents().equals(java.util.List.of("/ATTACK 10 1 " + target.id + " 1")),
+                "launch identifies player, tick, target, and firing cell");
+        game.tick();
         check(game.lane(10).monsters.get(0).hp == 2, "server applies level and upgrade damage");
         check(game.lane(20).monsters.get(0).hp == 5, "opponent lane remains independent");
         game.tick();

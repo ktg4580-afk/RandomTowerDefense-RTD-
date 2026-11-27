@@ -10,29 +10,26 @@ public abstract class Dice {
     protected ImageIcon diceIcon;
     protected Timer attackTimer;
     protected BulletLayerPanel bulletLayer;
-    protected MainBackgroundPanel backgroundPanel;
-    protected boolean ownLane = true;
     protected Board.BoardTile hostTile;
     protected int level = 1;
 
     public Dice(BulletLayerPanel bulletLayer, Board.BoardTile tile, int intervalMs, int level) {
-        this(bulletLayer, null, true, tile, intervalMs, level);
+        this(bulletLayer, null, tile, intervalMs, level);
     }
 
     public Dice(
             BulletLayerPanel bulletLayer,
             MainBackgroundPanel backgroundPanel,
-            boolean ownLane,
             Board.BoardTile tile,
             int intervalMs,
             int level
     ) {
         this.bulletLayer = bulletLayer;
-        this.backgroundPanel = backgroundPanel;
-        this.ownLane = ownLane;
         this.hostTile = tile;
         this.level = Math.max(1, Math.min(5, level));
         updateDiceImage();
+
+        if (backgroundPanel != null) return;
 
         attackTimer = new Timer(intervalMs, new ActionListener() {
             @Override
@@ -67,15 +64,7 @@ public abstract class Dice {
         double startX = tileLoc.x;
         double startY = tileLoc.y;
 
-        if (backgroundPanel != null) {
-            var target = backgroundPanel.getFrontMonsterTarget(ownLane);
-            if (target == null) return;
-
-            bulletLayer.addHomingBullet(startX, startY, target.point(),
-                    () -> backgroundPanel.getMonsterPoint(ownLane, target.monsterId()));
-        } else {
-            bulletLayer.addBullet(startX, startY, startX, 0);
-        }
+        bulletLayer.addBullet(startX, startY, startX, 0);
     }
 
     public void stopAttack() {

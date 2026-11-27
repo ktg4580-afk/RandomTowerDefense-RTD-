@@ -38,11 +38,14 @@ final class MonsterGame {
         String encode() { return id + ":" + type + ":" + hp + ":" + maxHp + ":" + position; }
     }
 
+    private record Attack(Monster target, int damage, int diceMask) {}
+
     static final class Lane {
         final int playerId;
         int hp = INITIAL_HP;
         final List<Monster> monsters = new ArrayList<>();
         int eliteCooldown = 0;
+        private Attack pendingAttack;
         Lane(int playerId) { this.playerId = playerId; }
     }
 
@@ -104,6 +107,8 @@ final class MonsterGame {
             spawnBasic(first);
             spawnBasic(second);
         }
+        resolveAttack(first);
+        resolveAttack(second);
         advance(first);
         advance(second);
         if (first.eliteCooldown > 0) first.eliteCooldown--;
@@ -111,18 +116,30 @@ final class MonsterGame {
         if (first.hp <= 0 || second.hp <= 0) {
             finished = true;
             winnerId = first.hp <= 0 && second.hp <= 0 ? 0 : first.hp <= 0 ? second.playerId : first.playerId;
+            return;
         }
+        queueAttack(first);
+        queueAttack(second);
     }
 
     private void spawnBasic(Lane lane) {
         lane.monsters.add(new Monster(nextMonsterId++, "BASIC", 5 + (wave - 1) * 2, 1, false));
     }
 
-    private void advance(Lane lane) {
+    private void queueAttack(Lane lane) {
+        Monster target = null;
+        for (Monster monster : lane.monsters) {
+            if (target == null || monster.position > target.position) target = monster;
+        }
+        if (target == null) return;
+
         DiceGame.PlayerField field = diceGame.player(lane.playerId);
         int damage = 0;
-        for (DiceGame.Dice dice : field.cells) {
+        int diceMask = 0;
+        for (int cell = 0; cell < field.cells.length; cell++) {
+            DiceGame.Dice dice = field.cells[cell];
             if (dice == null) continue;
+            diceMask |= 1 << cell;
             int base = dice.type.equals("RAPID") ? 2 : 1;
             damage += base * dice.level;
             for (int i = 0; i < DiceGame.TYPES.length; i++) {
@@ -130,15 +147,35 @@ final class MonsterGame {
             }
         }
 
-        Monster target = null;
-        for (Monster m : lane.monsters) if (target == null || m.position > target.position) target = m;
-        if (target != null && damage > 0) {
-            target.hp -= damage;
-            if (target.hp <= 0) {
-                lane.monsters.remove(target);
-                field.sp += target.elite ? KILL_REWARD * 3 : KILL_REWARD;
+        if (diceMask != 0) lane.pendingAttack = new Attack(target, damage, diceMask);
+    }
+
+    private void resolveAttack(Lane lane) {
+        Attack attack = lane.pendingAttack;
+        lane.pendingAttack = null;
+        if (attack == null) return;
+
+        Monster target = attack.target();
+        target.hp -= attack.damage();
+        if (target.hp <= 0) {
+            lane.monsters.remove(target);
+            diceGame.player(lane.playerId).sp += target.elite ? KILL_REWARD * 3 : KILL_REWARD;
+        }
+    }
+
+    List<String> attackEvents() {
+        List<String> events = new ArrayList<>(2);
+        for (Lane lane : List.of(first, second)) {
+            Attack attack = lane.pendingAttack;
+            if (attack != null) {
+                events.add(Protocol.ATTACK + " " + lane.playerId + " " + tick + " "
+                        + attack.target().id + " " + attack.diceMask());
             }
         }
+        return events;
+    }
+
+    private void advance(Lane lane) {
         Iterator<Monster> iterator = lane.monsters.iterator();
         while (iterator.hasNext()) {
             Monster monster = iterator.next();
