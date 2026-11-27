@@ -196,34 +196,6 @@ public final class GameServer {
         }
     }
 
-    void bulletHit(ClientHandler client, String input) {
-        synchronized (lock) {
-            GameRoom room = playingRoom(client);
-            if (room == null || room.monsters == null) return;
-            String[] tokens = input.split("\\s+");
-            if (tokens.length != 2) return;
-            int monsterId, damage;
-            try {
-                monsterId = Integer.parseInt(tokens[0]);
-                damage = Integer.parseInt(tokens[1]);
-            } catch (NumberFormatException e) {
-                return;
-            }
-            if (room.monsters.applyBulletHit(client.getId(), monsterId, damage)) {
-                broadcastMonsterState(room);
-                broadcastDiceState(room);
-                if (room.monsters.finished()) {
-                    broadcast(room, Protocol.GAME_OVER + " " + room.monsters.winnerId());
-                    room.started = false;
-                    room.game = null;
-                    room.monsters = null;
-                    for (ClientHandler member : room.members) member.setReady(false);
-                    roomState(room);
-                }
-            }
-        }
-    }
-
     private GameRoom playingRoom(ClientHandler client) {
         if (!registered(client)) return null;
         GameRoom room = client.getRoom();

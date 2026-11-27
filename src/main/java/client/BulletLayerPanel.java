@@ -8,7 +8,6 @@ import java.awt.geom.Point2D;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
-import java.util.function.IntPredicate;
 import java.util.function.Supplier;
 
 public class BulletLayerPanel extends JPanel {
@@ -41,40 +40,10 @@ public class BulletLayerPanel extends JPanel {
         repaint();
     }
 
-    public void addHomingBullet(
-            double startX,
-            double startY,
-            Supplier<Point2D.Double> targetSupplier,
-            IntPredicate aliveCheck,
-            Bullet.HitListener hitListener,
-            double fallbackX,
-            double fallbackY,
-            int damage,
-            int targetMonsterId
-    ) {
-        bullets.add(new Bullet(
-                startX,
-                startY,
-                targetSupplier,
-                aliveCheck,
-                hitListener,
-                fallbackX,
-                fallbackY,
-                damage,
-                targetMonsterId
-        ));
+    void addHomingBullet(double startX, double startY, Point2D.Double target,
+                         Supplier<Point2D.Double> targetSupplier) {
+        bullets.add(new Bullet(startX, startY, target.x, target.y, targetSupplier));
         repaint();
-    }
-
-    public int getIncomingDamageForMonster(int monsterId) {
-        if (monsterId < 0) return 0;
-        int sum = 0;
-        for (Bullet bullet : bullets) {
-            if (bullet.isActive() && bullet.getTargetMonsterId() == monsterId) {
-                sum += bullet.getDamage();
-            }
-        }
-        return sum;
     }
 
     @Override

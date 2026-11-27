@@ -119,6 +119,26 @@ final class MonsterGame {
     }
 
     private void advance(Lane lane) {
+        DiceGame.PlayerField field = diceGame.player(lane.playerId);
+        int damage = 0;
+        for (DiceGame.Dice dice : field.cells) {
+            if (dice == null) continue;
+            int base = dice.type.equals("RAPID") ? 2 : 1;
+            damage += base * dice.level;
+            for (int i = 0; i < DiceGame.TYPES.length; i++) {
+                if (DiceGame.TYPES[i].equals(dice.type)) damage += field.upgrades[i];
+            }
+        }
+
+        Monster target = null;
+        for (Monster m : lane.monsters) if (target == null || m.position > target.position) target = m;
+        if (target != null && damage > 0) {
+            target.hp -= damage;
+            if (target.hp <= 0) {
+                lane.monsters.remove(target);
+                field.sp += target.elite ? KILL_REWARD * 3 : KILL_REWARD;
+            }
+        }
         Iterator<Monster> iterator = lane.monsters.iterator();
         while (iterator.hasNext()) {
             Monster monster = iterator.next();
@@ -128,34 +148,6 @@ final class MonsterGame {
                 iterator.remove();
             }
         }
-    }
-
-    // 총알 명중 시 서버 권위로 실제 HP 차감, 처치 및 SP 보상 처리
-    synchronized boolean applyBulletHit(int senderId, int monsterId, int damage) {
-        if (finished || monsterId < 0 || damage <= 0) return false;
-        Lane lane = lane(senderId);
-        if (lane == null) return false;
-
-        Iterator<Monster> iterator = lane.monsters.iterator();
-        while (iterator.hasNext()) {
-            Monster monster = iterator.next();
-            if (monster.id == monsterId) {
-                monster.hp -= damage;
-                if (monster.hp <= 0) {
-                    iterator.remove();
-                    DiceGame.PlayerField field = diceGame.player(senderId);
-                    if (field != null) {
-                        field.sp += monster.elite ? KILL_REWARD * 3 : KILL_REWARD;
-                    }
-                }
-                if (first.hp <= 0 || second.hp <= 0) {
-                    finished = true;
-                    winnerId = first.hp <= 0 && second.hp <= 0 ? 0 : first.hp <= 0 ? second.playerId : first.playerId;
-                }
-                return true;
-            }
-        }
-        return false;
     }
 
     String encode(Lane lane) {

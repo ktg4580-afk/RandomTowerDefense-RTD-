@@ -31,5 +31,4 @@ public final class Protocol {
     public static final String MONSTER_STATE = "/MONSTER_STATE";
     public static final int MONSTER_PATH_LENGTH = 12;
     public static final String GAME_OVER = "/GAME_OVER";
-    public static final String BULLET_HIT = "/BULLET_HIT";
 }

@@ -9,6 +9,21 @@ public final class MonsterGameTest {
     private static final class ZeroRandom extends Random {
         @Override public int nextInt(int bound) { return 0; }
     }
+    private static void checkServerCombat() {
+        DiceGame dice = new DiceGame(10, 20, new ZeroRandom());
+        MonsterGame game = new MonsterGame(dice, new ZeroRandom());
+        DiceGame.PlayerField field = dice.player(10);
+        field.cells[0] = new DiceGame.Dice("BASIC", 2);
+        field.upgrades[0] = 1;
+
+        game.tick();
+        check(game.lane(10).monsters.get(0).hp == 2, "server applies level and upgrade damage");
+        check(game.lane(20).monsters.get(0).hp == 5, "opponent lane remains independent");
+        game.tick();
+        check(game.lane(10).monsters.isEmpty(), "server removes the defeated monster");
+        check(field.sp == 100 + MonsterGame.KILL_REWARD, "server grants the kill reward");
+    }
+
     public static void main(String[] args) {
         DiceGame dice = new DiceGame(10, 20, new ZeroRandom());
         MonsterGame game = new MonsterGame(dice, new ZeroRandom());
@@ -33,6 +48,7 @@ public final class MonsterGameTest {
         for (int i = 0; i < 200 && !game.finished(); i++) game.tick();
         check(game.finished(), "eventual ending");
         check(game.winnerId() == 0 || game.winnerId() == 10 || game.winnerId() == 20, "valid winner");
+        checkServerCombat();
         System.out.println("PASS: MonsterGame wave, elite, HP, serialization, ending");
     }
 }
