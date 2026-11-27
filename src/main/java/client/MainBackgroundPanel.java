@@ -8,16 +8,38 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class MainBackgroundPanel extends JPanel {
-    private record Monster(int id, String type, int hp, int maxHp, int position) {}
+    private static final int PATH_WIDTH = 55;
+    private static final long MOVEMENT_NANOS = 1_000_000_000L;
+
+    private record Monster(int id, String type, int hp, int maxHp, int position,
+                           double previousPosition, long movementStarted) {
+        double displayedPosition(long now) {
+            double progress = Math.min(1.0, (now - movementStarted) / (double) MOVEMENT_NANOS);
+            return previousPosition + (position - previousPosition) * progress;
+        }
+    }
 
     record FrontMonsterTarget(int monsterId, Point2D.Double point) {}
 
+    private final Timer movementTimer = new Timer(16, event -> repaint());
     private List<Monster> ownMonsters = List.of();
     private List<Monster> opponentMonsters = List.of();
 
     public MainBackgroundPanel() {
         setLayout(new GridBagLayout());
         setBackground(Color.WHITE);
+    }
+
+    @Override
+    public void addNotify() {
+        super.addNotify();
+        movementTimer.start();
+    }
+
+    @Override
+    public void removeNotify() {
+        movementTimer.stop();
+        super.removeNotify();
     }
 
     void applyMonsterState(String line, int myPlayerId) {
@@ -28,6 +50,8 @@ public class MainBackgroundPanel extends JPanel {
             int count = Integer.parseInt(fields[6]);
             if (count != fields.length - 7) return;
 
+            boolean ownLane = playerId == myPlayerId;
+            long now = System.nanoTime();
             List<Monster> monsters = new ArrayList<>(count);
             for (int i = 7; i < fields.length; i++) {
                 String[] monster = fields[i].split(":");
@@ -37,9 +61,15 @@ public class MainBackgroundPanel extends JPanel {
                 int maxHp = Integer.parseInt(monster[3]);
                 int position = Integer.parseInt(monster[4]);
                 if (hp <= 0 || hp > maxHp || position < 0 || position >= Protocol.MONSTER_PATH_LENGTH) return;
-                monsters.add(new Monster(id, monster[1], hp, maxHp, position));
+                Monster previous = findMonster(ownLane, id);
+                // 같은 좌표의 상태를 다시 받아도 진행 중인 이동은 이어간다.
+                boolean unchanged = previous != null && previous.position() == position;
+                double startPosition = previous == null ? position
+                        : unchanged ? previous.previousPosition() : previous.displayedPosition(now);
+                long started = unchanged ? previous.movementStarted() : now;
+                monsters.add(new Monster(id, monster[1], hp, maxHp, position, startPosition, started));
             }
-            if (playerId == myPlayerId) ownMonsters = monsters;
+            if (ownLane) ownMonsters = monsters;
             else opponentMonsters = monsters;
             repaint();
         } catch (NumberFormatException ignored) {
@@ -53,20 +83,23 @@ public class MainBackgroundPanel extends JPanel {
         for (Monster monster : monsters) {
             if (front == null || monster.position() > front.position()) front = monster;
         }
-        return front == null ? null : new FrontMonsterTarget(front.id(), monsterPoint(front, ownLane));
+        return front == null ? null : new FrontMonsterTarget(front.id(), monsterPoint(front, ownLane, System.nanoTime()));
     }
 
     Point2D.Double getMonsterPoint(boolean ownLane, int monsterId) {
+        Monster monster = findMonster(ownLane, monsterId);
+        return monster == null ? null : monsterPoint(monster, ownLane, System.nanoTime());
+    }
+
+    private Monster findMonster(boolean ownLane, int monsterId) {
         List<Monster> monsters = ownLane ? ownMonsters : opponentMonsters;
         for (Monster monster : monsters) {
-            if (monster.id() == monsterId) return monsterPoint(monster, ownLane);
+            if (monster.id() == monsterId) return monster;
         }
         return null;
     }
 
-    private static final int PATH_WIDTH = 55;
-
-    private Point2D.Double monsterPoint(Monster monster, boolean ownLane) {
+    private Point2D.Double monsterPoint(Monster monster, boolean ownLane, long now) {
         int left = PATH_WIDTH / 2;
         int right = Math.max(left, getWidth() - left);
         int startY = ownLane ? getHeight() - 65 : 65;
@@ -74,7 +107,7 @@ public class MainBackgroundPanel extends JPanel {
         int verticalLength = Math.abs(centerY - startY);
         double routeLength = 2 * verticalLength + right - left;
 
-        double distance = routeLength * monster.position() / Protocol.MONSTER_PATH_LENGTH;
+        double distance = routeLength * monster.displayedPosition(now) / Protocol.MONSTER_PATH_LENGTH;
         double x = left + Math.max(0, Math.min(right - left, distance - verticalLength));
         double vertical = Math.min(distance, routeLength - distance);
         double y = startY + (ownLane ? -1 : 1) * Math.min(verticalLength, vertical);
@@ -115,13 +148,14 @@ public class MainBackgroundPanel extends JPanel {
         g2d.drawLine(leftX + pathWidth, centerY, rightX, centerY);
         g2d.drawLine(leftX + pathWidth, centerY + pathWidth, rightX, centerY + pathWidth);
 
-        drawMonsters(g2d, opponentMonsters, false);
-        drawMonsters(g2d, ownMonsters, true);
+        long now = System.nanoTime();
+        drawMonsters(g2d, opponentMonsters, false, now);
+        drawMonsters(g2d, ownMonsters, true, now);
     }
 
-    private void drawMonsters(Graphics2D graphics, List<Monster> monsters, boolean ownLane) {
+    private void drawMonsters(Graphics2D graphics, List<Monster> monsters, boolean ownLane, long now) {
         for (Monster monster : monsters) {
-            Point2D.Double point = monsterPoint(monster, ownLane);
+            Point2D.Double point = monsterPoint(monster, ownLane, now);
             int x = (int) point.x;
             int y = (int) point.y;
 
