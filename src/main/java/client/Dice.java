@@ -1,6 +1,5 @@
 package client;
 
-import common.Protocol;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.ActionEvent;
@@ -11,29 +10,26 @@ public abstract class Dice {
     protected ImageIcon diceIcon;
     protected Timer attackTimer;
     protected BulletLayerPanel bulletLayer;
-    protected MainBackgroundPanel backgroundPanel;
-    protected boolean ownLane = true;
     protected Board.BoardTile hostTile;
     protected int level = 1;
 
     public Dice(BulletLayerPanel bulletLayer, Board.BoardTile tile, int intervalMs, int level) {
-        this(bulletLayer, null, true, tile, intervalMs, level);
+        this(bulletLayer, null, tile, intervalMs, level);
     }
 
     public Dice(
             BulletLayerPanel bulletLayer,
             MainBackgroundPanel backgroundPanel,
-            boolean ownLane,
             Board.BoardTile tile,
             int intervalMs,
             int level
     ) {
         this.bulletLayer = bulletLayer;
-        this.backgroundPanel = backgroundPanel;
-        this.ownLane = ownLane;
         this.hostTile = tile;
         this.level = Math.max(1, Math.min(5, level));
         updateDiceImage();
+
+        if (backgroundPanel != null) return;
 
         attackTimer = new Timer(intervalMs, new ActionListener() {
             @Override
@@ -55,11 +51,6 @@ public abstract class Dice {
 
     protected abstract void updateDiceImage();
 
-    protected int getAttackDamage() {
-        int base = (this instanceof RapidDice) ? 2 : 1;
-        return base * level;
-    }
-
     protected void shootBullet() {
         if (hostTile == null || bulletLayer == null) return;
 
@@ -73,33 +64,7 @@ public abstract class Dice {
         double startX = tileLoc.x;
         double startY = tileLoc.y;
 
-        if (backgroundPanel != null) {
-            var front = backgroundPanel.getFrontMonsterTarget(ownLane, bulletLayer);
-            if (front == null || front.point() == null) {
-                return;
-            }
-            int targetId = front.monsterId();
-            bulletLayer.addHomingBullet(
-                    startX,
-                    startY,
-                    () -> {
-                        var current = backgroundPanel.getFrontMonsterTarget(ownLane, bulletLayer);
-                        return current != null ? current.point() : null;
-                    },
-                    id -> backgroundPanel.isMonsterAlive(ownLane, id),
-                    (id, dmg) -> {
-                        if (ownLane && id >= 0 && dmg > 0) {
-                            NetworkClient.getInstance().send(Protocol.BULLET_HIT + " " + id + " " + dmg);
-                        }
-                    },
-                    front.point().x,
-                    front.point().y,
-                    getAttackDamage(),
-                    targetId
-            );
-        } else {
-            bulletLayer.addBullet(startX, startY, startX, 0);
-        }
+        bulletLayer.addBullet(startX, startY, startX, 0);
     }
 
     public void stopAttack() {

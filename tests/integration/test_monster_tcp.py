@@ -146,6 +146,35 @@ def main():
                     raise AssertionError(f"Player {player_id} did not receive SP regeneration")
         print("PASS: both clients receive the scheduled SP increase for both players")
 
+        a.send("/SUMMON")
+        attacks = []
+        for client in (a, b):
+            launch_state = None
+            client.sock.settimeout(4)
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline:
+                line = client.read()
+                if line.startswith("/MONSTER_STATE 1 "):
+                    launch_state = line.split()
+                if line.startswith("/ATTACK 1 "):
+                    attacks.append(line)
+                    _, _, launch_tick, monster_id, dice_mask = line.split()
+                    assert launch_state is not None and launch_state[4] == launch_tick
+                    assert int(dice_mask).bit_count() == 1
+                    before = next(int(m.split(":")[2]) for m in launch_state[7:]
+                                  if m.split(":")[0] == monster_id)
+                    after_state = state_parts(client, 1)
+                    assert int(after_state[4]) == int(launch_tick) + 1
+                    after = next((int(m.split(":")[2]) for m in after_state[7:]
+                                  if m.split(":")[0] == monster_id), 0)
+                    assert after < before
+                    break
+                assert not line.startswith("/ERROR "), line
+            else:
+                raise AssertionError("Missing attack notification")
+        assert attacks[0] == attacks[1], attacks
+        print("PASS: both clients see the same attack before damage on the next tick")
+
         b.send("/ROOM_LEAVE")
         b.expect("/ROOM_LEFT 1")
         a.expect("/PLAYER_LEFT 2")

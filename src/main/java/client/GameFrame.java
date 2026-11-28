@@ -147,11 +147,31 @@ public class GameFrame extends JFrame {
             );
 
         } else if (line.startsWith(Protocol.MONSTER_STATE + " ")) {
-            mainBgPanel.applyMonsterState(line, NetworkClient.getInstance().getMyPlayerId());
+            String[] fields = line.split("\\s+", 6);
+            if (fields.length < 6) return;
+            try {
+                bulletLayer.finishAttacks(Integer.parseInt(fields[1]), Integer.parseInt(fields[4]));
+                mainBgPanel.applyMonsterState(line, NetworkClient.getInstance().getMyPlayerId());
+            } catch (NumberFormatException ignored) {
+                // 잘못된 몬스터 상태는 무시한다.
+            }
+        } else if (line.startsWith(Protocol.ATTACK + " ")) {
+            String[] fields = line.split("\\s+");
+            if (fields.length != 5) return;
+            try {
+                int playerId = Integer.parseInt(fields[1]);
+                Board board = playerId == NetworkClient.getInstance().getMyPlayerId() ? bottomBoard : topBoard;
+                board.animateAttack(playerId, Integer.parseInt(fields[2]),
+                        Integer.parseInt(fields[3]), Integer.parseInt(fields[4]));
+            } catch (NumberFormatException ignored) {
+                // 잘못된 공격 알림은 표시하지 않는다.
+            }
         } else if (line.startsWith(Protocol.ERROR + " ")) {
             String errMsg = line.substring(
                     Protocol.ERROR.length() + 1
             ).strip();
+
+            if ("GAME_INTERRUPTED".equals(errMsg)) bulletLayer.clearAttacks();
 
             if ("EMPTY_CELL".equals(errMsg)) {
                 System.out.println("[무시됨] 빈 칸 이동 불가");

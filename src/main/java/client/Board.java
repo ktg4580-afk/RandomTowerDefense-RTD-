@@ -52,6 +52,20 @@ public class Board extends JPanel {
         add(gridPanel);
     }
 
+    void animateAttack(int playerId, int tick, int monsterId, int diceMask) {
+        var target = backgroundPanel.getMonsterPoint(ownLane, monsterId);
+        if (target == null) return;
+
+        for (int cell = 0; cell < ROWS * COLS; cell++) {
+            if ((diceMask & (1 << cell)) == 0) continue;
+            BoardTile tile = tiles[cell / COLS][cell % COLS];
+            Point start = SwingUtilities.convertPoint(tile, tile.getWidth() / 2,
+                    tile.getHeight() / 2, bulletLayer);
+            bulletLayer.addHomingBullet(start.x, start.y, target,
+                    () -> backgroundPanel.getMonsterPoint(ownLane, monsterId), playerId, tick);
+        }
+    }
+
     public void updateBoardState(int sp, int summonCost, String[] cellData) {
         int index = 0;
         for (int r = 0; r < ROWS; r++) {
@@ -83,13 +97,13 @@ public class Board extends JPanel {
                     tile.clearDice();
 
                     if ("BASIC".equals(type)) {
-                        BasicDice dice = new BasicDice(this.bulletLayer, this.backgroundPanel, this.ownLane, tile, level);
+                        BasicDice dice = new BasicDice(this.bulletLayer, this.backgroundPanel, tile, level);
                         tile.setBasicDice(dice);
                     } else if ("RAPID".equals(type)) {
-                        RapidDice dice = new RapidDice(this.bulletLayer, this.backgroundPanel, this.ownLane, tile, level);
+                        RapidDice dice = new RapidDice(this.bulletLayer, this.backgroundPanel, tile, level);
                         tile.setRapidDice(dice);
                     } else if ("SLOW".equals(type)) {
-                        SlowDice dice = new SlowDice(this.bulletLayer, this.backgroundPanel, this.ownLane, tile, level);
+                        SlowDice dice = new SlowDice(this.bulletLayer, this.backgroundPanel, tile, level);
                         tile.setSlowDice(dice);
                     }
                 }
@@ -119,13 +133,13 @@ public class Board extends JPanel {
         int diceType = new Random().nextInt(3);
 
         if (diceType == 0) {
-            RapidDice rapidDice = new RapidDice(bulletLayer, this.backgroundPanel, this.ownLane, targetTile, 1);
+            RapidDice rapidDice = new RapidDice(bulletLayer, this.backgroundPanel, targetTile, 1);
             targetTile.setRapidDice(rapidDice);
         } else if (diceType == 1) {
-            SlowDice slowDice = new SlowDice(bulletLayer, this.backgroundPanel, this.ownLane, targetTile, 1);
+            SlowDice slowDice = new SlowDice(bulletLayer, this.backgroundPanel, targetTile, 1);
             targetTile.setSlowDice(slowDice);
         } else {
-            BasicDice basicDice = new BasicDice(bulletLayer, this.backgroundPanel, this.ownLane, targetTile, 1);
+            BasicDice basicDice = new BasicDice(bulletLayer, this.backgroundPanel, targetTile, 1);
             targetTile.setBasicDice(basicDice);
         }
 

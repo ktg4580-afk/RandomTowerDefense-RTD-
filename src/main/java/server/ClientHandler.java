@@ -49,7 +49,6 @@ final class ClientHandler implements Runnable {
                 else if (line.equals(Protocol.ELITE_SUMMON)) server.eliteSummon(this);
                 else if (line.startsWith(Protocol.MERGE + " ")) server.merge(this, line.substring(Protocol.MERGE.length() + 1).strip());
                 else if (line.startsWith(Protocol.UPGRADE + " ")) server.upgrade(this, line.substring(Protocol.UPGRADE.length() + 1).strip());
-                else if (line.startsWith(Protocol.BULLET_HIT + " ")) server.bulletHit(this, line.substring(Protocol.BULLET_HIT.length() + 1).strip());
                 else if (line.startsWith(Protocol.CHAT + " ")) server.chat(this, line.substring(Protocol.CHAT.length() + 1));
                 else send(Protocol.ERROR + " UNKNOWN_COMMAND");
             }

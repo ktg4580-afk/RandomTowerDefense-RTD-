@@ -1,92 +1,68 @@
 package client;
 
+import common.Protocol;
 import java.awt.*;
 import java.awt.geom.Point2D;
-import java.util.function.IntPredicate;
 import java.util.function.Supplier;
 
 public class Bullet {
-    @FunctionalInterface
-    public interface HitListener {
-        void onHit(int monsterId, int damage);
-    }
-
     private double x, y;
+    private final double startX, startY;
+    private final long launchedAt = System.nanoTime();
     private double targetX, targetY;
     private final Supplier<Point2D.Double> targetSupplier;
-    private final IntPredicate aliveCheck;
-    private final HitListener hitListener;
-    private final int damage;
-    private final int targetMonsterId;
-    private double speed = 4.0;
+    private static final double SPEED = 4.0;
     private int lifeTime = 300;
     private boolean active = true;
 
     public Bullet(double startX, double startY, double targetX, double targetY) {
-        this(startX, startY, null, null, null, targetX, targetY, 1, -1);
+        this(startX, startY, targetX, targetY, null);
     }
 
-    public Bullet(
-            double startX,
-            double startY,
-            Supplier<Point2D.Double> targetSupplier,
-            IntPredicate aliveCheck,
-            HitListener hitListener,
-            double fallbackX,
-            double fallbackY,
-            int damage,
-            int targetMonsterId
-    ) {
-        this.x = startX;
-        this.y = startY;
+    Bullet(double startX, double startY, double targetX, double targetY,
+           Supplier<Point2D.Double> targetSupplier) {
+        this.startX = this.x = startX;
+        this.startY = this.y = startY;
+        this.targetX = targetX;
+        this.targetY = targetY;
         this.targetSupplier = targetSupplier;
-        this.aliveCheck = aliveCheck;
-        this.hitListener = hitListener;
-        this.targetX = fallbackX;
-        this.targetY = fallbackY;
-        this.damage = Math.max(1, damage);
-        this.targetMonsterId = targetMonsterId;
     }
 
     public void update() {
         if (!active) return;
-
-        lifeTime--;
-        if (lifeTime <= 0) {
-            active = false;
-            return;
-        }
-
-        if (targetMonsterId >= 0 && aliveCheck != null && !aliveCheck.test(targetMonsterId)) {
+        if (--lifeTime <= 0) {
             active = false;
             return;
         }
 
         if (targetSupplier != null) {
             Point2D.Double liveTarget = targetSupplier.get();
-            if (liveTarget == null) {
-                active = false;
-                return;
+            // 표적이 사라지면 마지막으로 확인한 위치까지 이동한다.
+            if (liveTarget != null) {
+                targetX = liveTarget.x;
+                targetY = liveTarget.y;
             }
-            this.targetX = liveTarget.x;
-            this.targetY = liveTarget.y;
+            double fraction = Math.min(1.0, (System.nanoTime() - launchedAt)
+                    / (Protocol.GAME_TICK_MS * 1_000_000.0));
+            x = startX + (targetX - startX) * fraction;
+            y = startY + (targetY - startY) * fraction;
+            return;
         }
 
         double dx = targetX - x;
         double dy = targetY - y;
-        double distance = Math.sqrt(dx * dx + dy * dy);
-
-        if (distance <= speed) {
-            x = targetX;
-            y = targetY;
-            if (hitListener != null && targetMonsterId >= 0) {
-                hitListener.onHit(targetMonsterId, damage);
-            }
+        double distance = Math.hypot(dx, dy);
+        if (distance <= SPEED) {
             active = false;
-        } else {
-            x += (dx / distance) * speed;
-            y += (dy / distance) * speed;
+            return;
         }
+        x += dx / distance * SPEED;
+        y += dy / distance * SPEED;
+    }
+
+    Point2D.Double impactPoint() {
+        Point2D.Double point = targetSupplier.get();
+        return point == null ? new Point2D.Double(targetX, targetY) : point;
     }
 
     public void draw(Graphics2D g2d) {
@@ -101,13 +77,5 @@ public class Bullet {
 
     public boolean isActive() {
         return active;
-    }
-
-    public int getDamage() {
-        return damage;
-    }
-
-    public int getTargetMonsterId() {
-        return targetMonsterId;
     }
 }

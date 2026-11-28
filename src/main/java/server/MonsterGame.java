@@ -38,11 +38,14 @@ final class MonsterGame {
         String encode() { return id + ":" + type + ":" + hp + ":" + maxHp + ":" + position; }
     }
 
+    private record Attack(Monster target, int damage, int diceMask) {}
+
     static final class Lane {
         final int playerId;
         int hp = INITIAL_HP;
         final List<Monster> monsters = new ArrayList<>();
         int eliteCooldown = 0;
+        private Attack pendingAttack;
         Lane(int playerId) { this.playerId = playerId; }
     }
 
@@ -104,6 +107,8 @@ final class MonsterGame {
             spawnBasic(first);
             spawnBasic(second);
         }
+        resolveAttack(first);
+        resolveAttack(second);
         advance(first);
         advance(second);
         if (first.eliteCooldown > 0) first.eliteCooldown--;
@@ -111,11 +116,63 @@ final class MonsterGame {
         if (first.hp <= 0 || second.hp <= 0) {
             finished = true;
             winnerId = first.hp <= 0 && second.hp <= 0 ? 0 : first.hp <= 0 ? second.playerId : first.playerId;
+            return;
         }
+        queueAttack(first);
+        queueAttack(second);
     }
 
     private void spawnBasic(Lane lane) {
         lane.monsters.add(new Monster(nextMonsterId++, "BASIC", 5 + (wave - 1) * 2, 1, false));
+    }
+
+    private void queueAttack(Lane lane) {
+        Monster target = null;
+        for (Monster monster : lane.monsters) {
+            if (target == null || monster.position > target.position) target = monster;
+        }
+        if (target == null) return;
+
+        DiceGame.PlayerField field = diceGame.player(lane.playerId);
+        int damage = 0;
+        int diceMask = 0;
+        for (int cell = 0; cell < field.cells.length; cell++) {
+            DiceGame.Dice dice = field.cells[cell];
+            if (dice == null) continue;
+            diceMask |= 1 << cell;
+            int base = dice.type.equals("RAPID") ? 2 : 1;
+            damage += base * dice.level;
+            for (int i = 0; i < DiceGame.TYPES.length; i++) {
+                if (DiceGame.TYPES[i].equals(dice.type)) damage += field.upgrades[i];
+            }
+        }
+
+        if (diceMask != 0) lane.pendingAttack = new Attack(target, damage, diceMask);
+    }
+
+    private void resolveAttack(Lane lane) {
+        Attack attack = lane.pendingAttack;
+        lane.pendingAttack = null;
+        if (attack == null) return;
+
+        Monster target = attack.target();
+        target.hp -= attack.damage();
+        if (target.hp <= 0) {
+            lane.monsters.remove(target);
+            diceGame.player(lane.playerId).sp += target.elite ? KILL_REWARD * 3 : KILL_REWARD;
+        }
+    }
+
+    List<String> attackEvents() {
+        List<String> events = new ArrayList<>(2);
+        for (Lane lane : List.of(first, second)) {
+            Attack attack = lane.pendingAttack;
+            if (attack != null) {
+                events.add(Protocol.ATTACK + " " + lane.playerId + " " + tick + " "
+                        + attack.target().id + " " + attack.diceMask());
+            }
+        }
+        return events;
     }
 
     private void advance(Lane lane) {
@@ -128,34 +185,6 @@ final class MonsterGame {
                 iterator.remove();
             }
         }
-    }
-
-    // 총알 명중 시 서버 권위로 실제 HP 차감, 처치 및 SP 보상 처리
-    synchronized boolean applyBulletHit(int senderId, int monsterId, int damage) {
-        if (finished || monsterId < 0 || damage <= 0) return false;
-        Lane lane = lane(senderId);
-        if (lane == null) return false;
-
-        Iterator<Monster> iterator = lane.monsters.iterator();
-        while (iterator.hasNext()) {
-            Monster monster = iterator.next();
-            if (monster.id == monsterId) {
-                monster.hp -= damage;
-                if (monster.hp <= 0) {
-                    iterator.remove();
-                    DiceGame.PlayerField field = diceGame.player(senderId);
-                    if (field != null) {
-                        field.sp += monster.elite ? KILL_REWARD * 3 : KILL_REWARD;
-                    }
-                }
-                if (first.hp <= 0 || second.hp <= 0) {
-                    finished = true;
-                    winnerId = first.hp <= 0 && second.hp <= 0 ? 0 : first.hp <= 0 ? second.playerId : first.playerId;
-                }
-                return true;
-            }
-        }
-        return false;
     }
 
     String encode(Lane lane) {

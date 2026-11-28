@@ -8,16 +8,36 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class MainBackgroundPanel extends JPanel {
-    private record Monster(int id, String type, int hp, int maxHp, int position) {}
+    private static final int PATH_WIDTH = 55;
+    private static final long MOVEMENT_NANOS = Protocol.GAME_TICK_MS * 1_000_000L;
 
-    public record FrontMonsterTarget(int monsterId, Point2D.Double point) {}
+    private record Monster(int id, String type, int hp, int maxHp, int position,
+                           double previousPosition, long movementStarted) {
+        double displayedPosition(long now) {
+            double progress = Math.min(1.0, (now - movementStarted) / (double) MOVEMENT_NANOS);
+            return previousPosition + (position - previousPosition) * progress;
+        }
+    }
 
+    private final Timer movementTimer = new Timer(16, event -> repaint());
     private List<Monster> ownMonsters = List.of();
     private List<Monster> opponentMonsters = List.of();
 
     public MainBackgroundPanel() {
         setLayout(new GridBagLayout());
         setBackground(Color.WHITE);
+    }
+
+    @Override
+    public void addNotify() {
+        super.addNotify();
+        movementTimer.start();
+    }
+
+    @Override
+    public void removeNotify() {
+        movementTimer.stop();
+        super.removeNotify();
     }
 
     void applyMonsterState(String line, int myPlayerId) {
@@ -28,6 +48,8 @@ public class MainBackgroundPanel extends JPanel {
             int count = Integer.parseInt(fields[6]);
             if (count != fields.length - 7) return;
 
+            boolean ownLane = playerId == myPlayerId;
+            long now = System.nanoTime();
             List<Monster> monsters = new ArrayList<>(count);
             for (int i = 7; i < fields.length; i++) {
                 String[] monster = fields[i].split(":");
@@ -37,9 +59,15 @@ public class MainBackgroundPanel extends JPanel {
                 int maxHp = Integer.parseInt(monster[3]);
                 int position = Integer.parseInt(monster[4]);
                 if (hp <= 0 || hp > maxHp || position < 0 || position >= Protocol.MONSTER_PATH_LENGTH) return;
-                monsters.add(new Monster(id, monster[1], hp, maxHp, position));
+                Monster previous = findMonster(ownLane, id);
+                // 같은 좌표의 상태를 다시 받아도 진행 중인 이동은 이어간다.
+                boolean unchanged = previous != null && previous.position() == position;
+                double startPosition = previous == null ? position
+                        : unchanged ? previous.previousPosition() : previous.displayedPosition(now);
+                long started = unchanged ? previous.movementStarted() : now;
+                monsters.add(new Monster(id, monster[1], hp, maxHp, position, startPosition, started));
             }
-            if (playerId == myPlayerId) ownMonsters = monsters;
+            if (ownLane) ownMonsters = monsters;
             else opponentMonsters = monsters;
             repaint();
         } catch (NumberFormatException ignored) {
@@ -47,66 +75,32 @@ public class MainBackgroundPanel extends JPanel {
         }
     }
 
-    public boolean isMonsterAlive(boolean ownLane, int monsterId) {
-        if (monsterId < 0) return true;
-        List<Monster> monsters = ownLane ? ownMonsters : opponentMonsters;
-        if (monsters == null || monsters.isEmpty()) return false;
-        for (Monster monster : monsters) {
-            if (monster.id() == monsterId && monster.hp() > 0) {
-                return true;
-            }
-        }
-        return false;
+    Point2D.Double getMonsterPoint(boolean ownLane, int monsterId) {
+        Monster monster = findMonster(ownLane, monsterId);
+        return monster == null ? null : monsterPoint(monster, ownLane, System.nanoTime());
     }
 
-    public Point2D.Double getFrontMonsterTarget(boolean ownLane) {
-        FrontMonsterTarget target = getFrontMonsterTarget(ownLane, null);
-        return target != null ? target.point() : null;
+    private Monster findMonster(boolean ownLane, int monsterId) {
+        List<Monster> monsters = ownLane ? ownMonsters : opponentMonsters;
+        for (Monster monster : monsters) {
+            if (monster.id() == monsterId) return monster;
+        }
+        return null;
     }
 
-    public FrontMonsterTarget getFrontMonsterTarget(boolean ownLane, BulletLayerPanel bulletLayer) {
-        if (getWidth() <= 0 || getHeight() <= 0) {
-            return null;
-        }
-
-        List<Monster> monsters = ownLane ? ownMonsters : opponentMonsters;
-        if (monsters == null || monsters.isEmpty()) {
-            return null;
-        }
-
-        Monster front = null;
-        for (Monster monster : monsters) {
-            if (monster.hp() <= 0) continue;
-            int incoming = (bulletLayer != null) ? bulletLayer.getIncomingDamageForMonster(monster.id()) : 0;
-            int effectiveHp = monster.hp() - incoming;
-            if (effectiveHp <= 0) continue;
-
-            if (front == null || monster.position() > front.position()) {
-                front = monster;
-            }
-        }
-        if (front == null) {
-            return null;
-        }
-
-        int pathWidth = 55;
-        int left = pathWidth / 2;
+    private Point2D.Double monsterPoint(Monster monster, boolean ownLane, long now) {
+        int left = PATH_WIDTH / 2;
         int right = Math.max(left, getWidth() - left);
         int startY = ownLane ? getHeight() - 65 : 65;
         int centerY = getHeight() / 2 + (ownLane ? 14 : -14);
         int verticalLength = Math.abs(centerY - startY);
-        double routeLength = 2 * verticalLength + Math.max(0, right - left);
+        double routeLength = 2 * verticalLength + right - left;
 
-        if (routeLength <= 0) {
-            return null;
-        }
-
-        double distance = routeLength * front.position() / Protocol.MONSTER_PATH_LENGTH;
+        double distance = routeLength * monster.displayedPosition(now) / Protocol.MONSTER_PATH_LENGTH;
         double x = left + Math.max(0, Math.min(right - left, distance - verticalLength));
         double vertical = Math.min(distance, routeLength - distance);
         double y = startY + (ownLane ? -1 : 1) * Math.min(verticalLength, vertical);
-
-        return new FrontMonsterTarget(front.id(), new Point2D.Double(x, y));
+        return new Point2D.Double(x, y);
     }
 
     @Override
@@ -121,7 +115,7 @@ public class MainBackgroundPanel extends JPanel {
 
         // 1. H모양 길 배경 그리기
         g2d.setColor(new Color(235, 235, 235));
-        int pathWidth = 55;
+        int pathWidth = PATH_WIDTH;
         int leftX = 0;
         int rightX = width - pathWidth;
         int centerY = height / 2 - pathWidth / 2;
@@ -143,22 +137,16 @@ public class MainBackgroundPanel extends JPanel {
         g2d.drawLine(leftX + pathWidth, centerY, rightX, centerY);
         g2d.drawLine(leftX + pathWidth, centerY + pathWidth, rightX, centerY + pathWidth);
 
-        drawMonsters(g2d, opponentMonsters, false, pathWidth);
-        drawMonsters(g2d, ownMonsters, true, pathWidth);
+        long now = System.nanoTime();
+        drawMonsters(g2d, opponentMonsters, false, now);
+        drawMonsters(g2d, ownMonsters, true, now);
     }
 
-    private void drawMonsters(Graphics2D graphics, List<Monster> monsters, boolean ownLane, int pathWidth) {
-        int left = pathWidth / 2;
-        int right = getWidth() - left;
-        int startY = ownLane ? getHeight() - 65 : 65;
-        int centerY = getHeight() / 2 + (ownLane ? 14 : -14);
-        int verticalLength = Math.abs(centerY - startY);
-        double routeLength = 2 * verticalLength + right - left;
+    private void drawMonsters(Graphics2D graphics, List<Monster> monsters, boolean ownLane, long now) {
         for (Monster monster : monsters) {
-            double distance = routeLength * monster.position() / Protocol.MONSTER_PATH_LENGTH;
-            int x = left + (int) Math.max(0, Math.min(right - left, distance - verticalLength));
-            double vertical = Math.min(distance, routeLength - distance);
-            int y = startY + (ownLane ? -1 : 1) * (int) Math.min(verticalLength, vertical);
+            Point2D.Double point = monsterPoint(monster, ownLane, now);
+            int x = (int) point.x;
+            int y = (int) point.y;
 
             graphics.setColor(monster.type().equals("BASIC") ? new Color(50, 96, 160) : new Color(164, 57, 42));
             graphics.fillOval(x - 9, y - 9, 18, 18);
